@@ -328,7 +328,10 @@ fn mutation_in_render_severity_is_error_when_triggered() {
         });
     let diags = MutationInRender.check(&analysis);
     assert!(!diags.is_empty());
-    assert_eq!(diags[0].severity, convex_doctor::diagnostic::Severity::Error);
+    assert_eq!(
+        diags[0].severity,
+        convex_doctor::diagnostic::Severity::Error
+    );
 }
 
 #[test]

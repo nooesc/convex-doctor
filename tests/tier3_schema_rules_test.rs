@@ -9,8 +9,7 @@ use tempfile::TempDir;
 
 #[test]
 fn test_too_many_indexes_triggered() {
-    let analysis =
-        analyze_file(Path::new("tests/fixtures/schema_many_indexes.ts")).unwrap();
+    let analysis = analyze_file(Path::new("tests/fixtures/schema_many_indexes.ts")).unwrap();
     let rule = TooManyIndexes;
     let diagnostics = rule.check(&analysis);
     assert!(
@@ -30,8 +29,7 @@ fn test_too_many_indexes_triggered() {
 #[test]
 fn test_too_many_indexes_not_triggered_below_threshold() {
     // schema_patterns.ts has only 2 indexes on 'posts'
-    let analysis =
-        analyze_file(Path::new("tests/fixtures/schema_patterns.ts")).unwrap();
+    let analysis = analyze_file(Path::new("tests/fixtures/schema_patterns.ts")).unwrap();
     let rule = TooManyIndexes;
     let diagnostics = rule.check(&analysis);
     assert!(
@@ -89,8 +87,7 @@ export default defineSchema({
 
 #[test]
 fn test_missing_search_index_filter_detected() {
-    let analysis =
-        analyze_file(Path::new("tests/fixtures/schema_search_no_filter.ts")).unwrap();
+    let analysis = analyze_file(Path::new("tests/fixtures/schema_search_no_filter.ts")).unwrap();
     let rule = MissingSearchIndexFilter;
     let diagnostics = rule.check(&analysis);
 
@@ -103,10 +100,7 @@ fn test_missing_search_index_filter_detected() {
         analysis
             .search_index_definitions
             .iter()
-            .map(|s| format!(
-                "{}(has_filter={})",
-                s.name, s.has_filter_fields
-            ))
+            .map(|s| format!("{}(has_filter={})", s.name, s.has_filter_fields))
             .collect::<Vec<_>>()
     );
     assert_eq!(diagnostics[0].severity, Severity::Info);
@@ -155,8 +149,7 @@ export default defineSchema({
 
 #[test]
 fn test_optional_fields_warning_triggered() {
-    let analysis =
-        analyze_file(Path::new("tests/fixtures/schema_many_optional.ts")).unwrap();
+    let analysis = analyze_file(Path::new("tests/fixtures/schema_many_optional.ts")).unwrap();
     let rule = OptionalFieldNoDefaultHandling;
     let diagnostics = rule.check(&analysis);
     assert_eq!(
@@ -167,7 +160,9 @@ fn test_optional_fields_warning_triggered() {
     );
     assert_eq!(diagnostics[0].severity, Severity::Warning);
     assert!(diagnostics[0].message.contains("optional fields"));
-    assert!(diagnostics[0].message.contains(&analysis.optional_schema_fields.len().to_string()));
+    assert!(diagnostics[0]
+        .message
+        .contains(&analysis.optional_schema_fields.len().to_string()));
 }
 
 #[test]
@@ -203,14 +198,10 @@ export default defineSchema({
 #[test]
 fn test_optional_fields_not_triggered_for_non_schema_file() {
     // basic_query.ts doesn't contain "schema" in filename
-    let analysis =
-        analyze_file(Path::new("tests/fixtures/basic_query.ts")).unwrap();
+    let analysis = analyze_file(Path::new("tests/fixtures/basic_query.ts")).unwrap();
     let rule = OptionalFieldNoDefaultHandling;
     let diagnostics = rule.check(&analysis);
-    assert!(
-        diagnostics.is_empty(),
-        "Should not flag non-schema files"
-    );
+    assert!(diagnostics.is_empty(), "Should not flag non-schema files");
 }
 
 // ── MissingIndexForQuery (project-level) ────────────────────────────────────
@@ -268,10 +259,7 @@ fn test_missing_index_for_query_has_indexes() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-    assert!(
-        diagnostics.is_empty(),
-        "Should not warn when indexes exist"
-    );
+    assert!(diagnostics.is_empty(), "Should not warn when indexes exist");
 }
 
 #[test]

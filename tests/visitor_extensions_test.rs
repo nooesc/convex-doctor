@@ -168,7 +168,11 @@ export const getData = query({
 });
 "#,
     );
-    let func = analysis.functions.iter().find(|f| f.name == "getData").unwrap();
+    let func = analysis
+        .functions
+        .iter()
+        .find(|f| f.name == "getData")
+        .unwrap();
     assert!(
         func.has_any_validator_in_args,
         "Should detect v.any() in args"
@@ -192,7 +196,11 @@ export const getData = query({
 });
 "#,
     );
-    let func = analysis.functions.iter().find(|f| f.name == "getData").unwrap();
+    let func = analysis
+        .functions
+        .iter()
+        .find(|f| f.name == "getData")
+        .unwrap();
     assert!(
         !func.has_any_validator_in_args,
         "Should NOT flag v.string() as v.any()"
@@ -409,8 +417,14 @@ export default defineSchema({
         "Should detect 2 schema ID fields, found: {:?}",
         analysis.schema_id_fields
     );
-    assert!(analysis.schema_id_fields.iter().any(|f| f.table_ref == "users"));
-    assert!(analysis.schema_id_fields.iter().any(|f| f.table_ref == "categories"));
+    assert!(analysis
+        .schema_id_fields
+        .iter()
+        .any(|f| f.table_ref == "users"));
+    assert!(analysis
+        .schema_id_fields
+        .iter()
+        .any(|f| f.table_ref == "categories"));
 }
 
 // --------------------------------------------------------------------------
@@ -434,7 +448,10 @@ export const getActive = query({
 "#,
     );
     assert!(
-        analysis.filter_field_names.iter().any(|f| f.field_name == "status"),
+        analysis
+            .filter_field_names
+            .iter()
+            .any(|f| f.field_name == "status"),
         "Should extract 'status' from filter q.field('status'), found: {:?}",
         analysis.filter_field_names
     );
@@ -612,8 +629,14 @@ function MyComponent() {
         "Should detect 2 hook calls, found: {:?}",
         analysis.convex_hook_calls
     );
-    assert!(analysis.convex_hook_calls.iter().any(|h| h.hook_name == "useQuery"));
-    assert!(analysis.convex_hook_calls.iter().any(|h| h.hook_name == "useMutation"));
+    assert!(analysis
+        .convex_hook_calls
+        .iter()
+        .any(|h| h.hook_name == "useQuery"));
+    assert!(analysis
+        .convex_hook_calls
+        .iter()
+        .any(|h| h.hook_name == "useMutation"));
 }
 
 #[test]
@@ -658,7 +681,9 @@ function App() {
 fn test_collect_then_filter_visitor_detection() {
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("ctf.ts");
-    std::fs::write(&path, r#"
+    std::fs::write(
+        &path,
+        r#"
 import { query } from "convex/server";
 export const list = query({
   handler: async (ctx) => {
@@ -667,10 +692,14 @@ export const list = query({
     return filtered;
   },
 });
-"#).unwrap();
+"#,
+    )
+    .unwrap();
     let analysis = analyze_file(&path).unwrap();
-    assert!(!analysis.collect_variable_filters.is_empty(),
-        "Should detect collect-then-filter pattern");
+    assert!(
+        !analysis.collect_variable_filters.is_empty(),
+        "Should detect collect-then-filter pattern"
+    );
 }
 
 // --------------------------------------------------------------------------
@@ -691,7 +720,10 @@ export const create = mutation({
 "#,
     );
     assert!(
-        analysis.ctx_calls.iter().any(|c| c.chain.contains("ctx") && c.chain.contains("db")),
+        analysis
+            .ctx_calls
+            .iter()
+            .any(|c| c.chain.contains("ctx") && c.chain.contains("db")),
         "Should detect ctx?.db.insert as a ctx call, found: {:?}",
         analysis.ctx_calls
     );
@@ -711,7 +743,11 @@ export const doStuff = mutation({
 });
 "#,
     );
-    let func = analysis.functions.iter().find(|f| f.name == "doStuff").unwrap();
+    let func = analysis
+        .functions
+        .iter()
+        .find(|f| f.name == "doStuff")
+        .unwrap();
     assert!(
         func.has_auth_check,
         "Should detect ctx.auth?.getUserIdentity() as an auth check"
@@ -738,12 +774,18 @@ export default defineSchema({
 "#,
     );
     assert!(
-        analysis.schema_id_fields.iter().any(|f| f.field_name == "authorId" && f.table_ref == "users"),
+        analysis
+            .schema_id_fields
+            .iter()
+            .any(|f| f.field_name == "authorId" && f.table_ref == "users"),
         "field_name should be 'authorId', not 'v.id(\"users\")', found: {:?}",
         analysis.schema_id_fields
     );
     assert!(
-        analysis.schema_id_fields.iter().any(|f| f.field_name == "categoryId" && f.table_ref == "categories"),
+        analysis
+            .schema_id_fields
+            .iter()
+            .any(|f| f.field_name == "categoryId" && f.table_ref == "categories"),
         "field_name should be 'categoryId', not 'v.id(\"categories\")', found: {:?}",
         analysis.schema_id_fields
     );

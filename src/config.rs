@@ -79,7 +79,10 @@ impl Config {
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .unwrap_or_else(|_| absolute.clone());
         let relative_with_dot = format!("./{relative}");
-        let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
         let ignore_patterns = self.cached_ignore_patterns();
 
         for pattern in ignore_patterns.iter() {

@@ -35,10 +35,7 @@ export const getDoc = query({
     );
     let rule = MissingTableId;
     let diags = rule.check(&analysis);
-    assert!(
-        !diags.is_empty(),
-        "Should detect v.id() without table name"
-    );
+    assert!(!diags.is_empty(), "Should detect v.id() without table name");
     assert!(
         diags[0].message.contains("v.id()"),
         "Message should mention v.id(), got: {}",

@@ -540,9 +540,7 @@ export const update = mutation({
     let rule = ReplaceVsPatch;
     let diagnostics = rule.check(&analysis);
     assert_eq!(diagnostics.len(), 1);
-    assert!(diagnostics[0]
-        .message
-        .contains("ctx.db.replace"));
+    assert!(diagnostics[0].message.contains("ctx.db.replace"));
 }
 
 #[test]
@@ -568,10 +566,7 @@ export const update = mutation({
     let analysis = analyze_file(&path).unwrap();
     let rule = ReplaceVsPatch;
     let diagnostics = rule.check(&analysis);
-    assert!(
-        diagnostics.is_empty(),
-        "Should not flag ctx.db.patch"
-    );
+    assert!(diagnostics.is_empty(), "Should not flag ctx.db.patch");
 }
 
 // ---------------------------------------------------------------------------
@@ -587,9 +582,7 @@ fn test_generated_code_modified_detected() {
     };
     let diagnostics = rule.check_project(&ctx);
     assert_eq!(diagnostics.len(), 1);
-    assert!(diagnostics[0]
-        .message
-        .contains("convex/_generated/"));
+    assert!(diagnostics[0].message.contains("convex/_generated/"));
 }
 
 #[test]

@@ -292,8 +292,9 @@ impl Rule for QuerySideEffect {
                     "`{}` in a query function — queries must be read-only",
                     c.chain
                 ),
-                help: "Queries must be deterministic and side-effect-free. Move writes to a mutation."
-                    .to_string(),
+                help:
+                    "Queries must be deterministic and side-effect-free. Move writes to a mutation."
+                        .to_string(),
                 file: analysis.file_path.clone(),
                 line: c.line,
                 column: c.col,
@@ -325,10 +326,7 @@ impl Rule for MutationInQuery {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
                 category: self.category(),
-                message: format!(
-                    "`{}` called from a query function",
-                    c.chain
-                ),
+                message: format!("`{}` called from a query function", c.chain),
                 help: "Queries cannot call mutations. Move mutation calls to a mutation or action."
                     .to_string(),
                 file: analysis.file_path.clone(),

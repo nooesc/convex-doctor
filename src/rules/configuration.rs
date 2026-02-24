@@ -64,6 +64,14 @@ impl Rule for MissingGeneratedCode {
 
 /// Project-level rule: warn when convex.json specifies an outdated Node version.
 pub struct OutdatedNodeVersion;
+impl OutdatedNodeVersion {
+    fn parse_major_node_version(version_str: &str) -> Option<u32> {
+        version_str
+            .split(|c: char| !c.is_ascii_digit())
+            .find(|part| !part.is_empty())
+            .and_then(|part| part.parse::<u32>().ok())
+    }
+}
 impl Rule for OutdatedNodeVersion {
     fn id(&self) -> &'static str {
         "config/outdated-node-version"
@@ -96,13 +104,6 @@ impl Rule for OutdatedNodeVersion {
             }
         }
         vec![]
-    }
-
-    fn parse_major_node_version(version_str: &str) -> Option<u32> {
-        version_str
-            .split(|c: char| !c.is_ascii_digit())
-            .find(|part| !part.is_empty())
-            .and_then(|part| part.parse::<u32>().ok())
     }
 }
 

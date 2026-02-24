@@ -234,9 +234,7 @@ impl Rule for OptionalFieldNoDefaultHandling {
         Category::Schema
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        if analysis.file_path.contains("schema")
-            && analysis.optional_schema_fields.len() >= 5
-        {
+        if analysis.file_path.contains("schema") && analysis.optional_schema_fields.len() >= 5 {
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -314,7 +312,8 @@ impl Rule for MissingIndexForQuery {
                     "Query filters on field `{}` but no index starts with that field",
                     ff.field_name
                 ),
-                help: "Add an index starting with this field to avoid full table scans.".to_string(),
+                help: "Add an index starting with this field to avoid full table scans."
+                    .to_string(),
                 file: "convex/schema.ts".to_string(),
                 line: ff.line,
                 column: ff.col,

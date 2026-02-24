@@ -103,7 +103,9 @@ fn test_action_from_client_fires_on_fixture() {
         "Should detect public action in bad_patterns.ts"
     );
     assert!(diagnostics[0].message.contains("Public action"));
-    assert!(diagnostics[0].message.contains("can be called directly from client"));
+    assert!(diagnostics[0]
+        .message
+        .contains("can be called directly from client"));
     assert_eq!(diagnostics[0].severity, Severity::Warning);
 }
 
@@ -182,8 +184,7 @@ fn test_collect_then_filter_fires() {
         collect_variable_filters: vec![CallLocation {
             line: 10,
             col: 5,
-            detail: "Variable `items` from .collect() is later filtered with .filter()"
-                .to_string(),
+            detail: "Variable `items` from .collect() is later filtered with .filter()".to_string(),
         }],
         ..Default::default()
     };
@@ -420,7 +421,10 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
 
 #[test]
 fn test_rule_ids_are_correct() {
-    assert_eq!(MissingIndexOnForeignKey.id(), "perf/missing-index-on-foreign-key");
+    assert_eq!(
+        MissingIndexOnForeignKey.id(),
+        "perf/missing-index-on-foreign-key"
+    );
     assert_eq!(ActionFromClient.id(), "perf/action-from-client");
     assert_eq!(CollectThenFilter.id(), "perf/collect-then-filter");
     assert_eq!(LargeDocumentWrite.id(), "perf/large-document-write");

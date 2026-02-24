@@ -1,6 +1,8 @@
 use convex_doctor::diagnostic::Severity;
 use convex_doctor::rules::architecture::*;
-use convex_doctor::rules::{CallLocation, ConvexFunction, CtxCall, FileAnalysis, FunctionKind, Rule};
+use convex_doctor::rules::{
+    CallLocation, ConvexFunction, CtxCall, FileAnalysis, FunctionKind, Rule,
+};
 
 // ── ActionWithoutScheduling ──────────────────────────────────────────
 
@@ -225,7 +227,11 @@ fn mixed_function_types_emits_only_one_diagnostic() {
     };
     let rule = MixedFunctionTypes;
     let diagnostics = rule.check(&analysis);
-    assert_eq!(diagnostics.len(), 1, "Should emit exactly one diagnostic per file");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Should emit exactly one diagnostic per file"
+    );
 }
 
 // ── NoHelperFunctions ────────────────────────────────────────────────
@@ -331,7 +337,11 @@ fn no_helper_functions_emits_only_one_diagnostic() {
     };
     let rule = NoHelperFunctions;
     let diagnostics = rule.check(&analysis);
-    assert_eq!(diagnostics.len(), 1, "Should emit exactly one diagnostic per file");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Should emit exactly one diagnostic per file"
+    );
     assert!(diagnostics[0].message.contains("4 handlers"));
 }
 
@@ -413,7 +423,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 5,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -424,7 +434,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 10,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -435,7 +445,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 15,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -446,7 +456,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 20,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -470,7 +480,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runQuery".to_string(),
                 line: 5,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -481,7 +491,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runMutation".to_string(),
                 line: 10,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -492,7 +502,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runQuery".to_string(),
                 line: 15,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -503,7 +513,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runMutation".to_string(),
                 line: 20,
                 col: 5,
-    
+
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -534,6 +544,10 @@ fn deep_function_chain_emits_only_one_diagnostic() {
     };
     let rule = DeepFunctionChain;
     let diagnostics = rule.check(&analysis);
-    assert_eq!(diagnostics.len(), 1, "Should emit exactly one diagnostic per file");
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Should emit exactly one diagnostic per file"
+    );
     assert!(diagnostics[0].message.contains("5 ctx.run*"));
 }

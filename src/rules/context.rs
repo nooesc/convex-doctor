@@ -257,10 +257,10 @@ impl<'a> ConvexVisitor<'a> {
             Expression::ComputedMemberExpression(mem) => Self::contains_process_env(&mem.object),
             Expression::CallExpression(call) => {
                 Self::contains_process_env(&call.callee)
-                    || call
-                        .arguments
-                        .iter()
-                        .any(|a| a.as_expression().is_some_and(|e| Self::contains_process_env(e)))
+                    || call.arguments.iter().any(|a| {
+                        a.as_expression()
+                            .is_some_and(|e| Self::contains_process_env(e))
+                    })
             }
             Expression::ConditionalExpression(cond) => {
                 Self::contains_process_env(&cond.test)
@@ -268,13 +268,11 @@ impl<'a> ConvexVisitor<'a> {
                     || Self::contains_process_env(&cond.alternate)
             }
             Expression::BinaryExpression(bin) => {
-                Self::contains_process_env(&bin.left)
-                    || Self::contains_process_env(&bin.right)
+                Self::contains_process_env(&bin.left) || Self::contains_process_env(&bin.right)
             }
             Expression::UnaryExpression(un) => Self::contains_process_env(&un.argument),
             Expression::LogicalExpression(log) => {
-                Self::contains_process_env(&log.left)
-                    || Self::contains_process_env(&log.right)
+                Self::contains_process_env(&log.left) || Self::contains_process_env(&log.right)
             }
             _ => false,
         }
@@ -527,12 +525,12 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                                 if let ObjectPropertyKind::ObjectProperty(arg) =
                                                     arg_prop
                                                 {
-                                                    let arg_name_str =
-                                                        arg.key.static_name().map(|n| n.to_string());
+                                                    let arg_name_str = arg
+                                                        .key
+                                                        .static_name()
+                                                        .map(|n| n.to_string());
                                                     if let Some(ref arg_name) = arg_name_str {
-                                                        builder
-                                                            .arg_names
-                                                            .push(arg_name.clone());
+                                                        builder.arg_names.push(arg_name.clone());
                                                     }
 
                                                     // Check for v.any() in arg values
@@ -568,14 +566,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                                                         == "id"
                                                                     && val_call.arguments.is_empty()
                                                                 {
-                                                                    let detail =
-                                                                        if let Some(ref an) =
-                                                                            arg_name_str
-                                                                        {
-                                                                            format!("Arg '{}' uses v.id() without table name", an)
-                                                                        } else {
-                                                                            "v.id() without table name".to_string()
-                                                                        };
+                                                                    let detail = if let Some(
+                                                                        ref an,
+                                                                    ) = arg_name_str
+                                                                    {
+                                                                        format!("Arg '{}' uses v.id() without table name", an)
+                                                                    } else {
+                                                                        "v.id() without table name"
+                                                                            .to_string()
+                                                                    };
                                                                     self.analysis
                                                                         .generic_id_validators
                                                                         .push(CallLocation {
@@ -878,8 +877,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 "interval" | "hourly" | "daily" | "weekly" | "monthly" | "cron"
             ) {
                 // Only flag if the receiver looks like a cron scheduling object
-                let receiver_chain =
-                    Self::resolve_member_chain(&mem.object).unwrap_or_default();
+                let receiver_chain = Self::resolve_member_chain(&mem.object).unwrap_or_default();
                 if receiver_chain == "crons"
                     || receiver_chain.contains("cron")
                     || receiver_chain.contains("Cron")
@@ -957,14 +955,12 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                     match key_name.as_ref() {
                                         "method" => {
                                             if let Expression::StringLiteral(s) = &p.value {
-                                                method =
-                                                    Some(s.value.as_str().to_string());
+                                                method = Some(s.value.as_str().to_string());
                                             }
                                         }
                                         "path" | "pathPrefix" => {
                                             if let Expression::StringLiteral(s) = &p.value {
-                                                path =
-                                                    Some(s.value.as_str().to_string());
+                                                path = Some(s.value.as_str().to_string());
                                             }
                                         }
                                         _ => {}
@@ -992,7 +988,10 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         if let Some(Expression::StringLiteral(s)) = first_arg.as_expression() {
                             let table_ref = s.value.as_str().to_string();
                             self.analysis.schema_id_fields.push(SchemaIdField {
-                                field_name: self.current_object_property_name.clone().unwrap_or_default(),
+                                field_name: self
+                                    .current_object_property_name
+                                    .clone()
+                                    .unwrap_or_default(),
                                 table_ref,
                                 line,
                                 col,
@@ -1093,10 +1092,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                 self.analysis.large_writes.push(CallLocation {
                                     line,
                                     col,
-                                    detail: format!(
-                                        "{} with {} properties",
-                                        chain, prop_count
-                                    ),
+                                    detail: format!("{} with {} properties", chain, prop_count),
                                 });
                             }
                         }
@@ -1113,7 +1109,10 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     hook_name: name.to_string(),
                     line,
                     col,
-                    in_render_body: true,
+                    // Heuristic disabled: statically distinguishing render body
+                    // from event handlers / useEffect is unreliable.  The rule
+                    // infrastructure is kept for future improvement.
+                    in_render_body: false,
                 });
             }
         }
@@ -1285,17 +1284,13 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         match it {
             // Standalone function declaration (not inside export)
             Statement::FunctionDeclaration(_) => {
-                if self.current_export_names.is_empty()
-                    && self.function_builder_stack.is_empty()
-                {
+                if self.current_export_names.is_empty() && self.function_builder_stack.is_empty() {
                     self.analysis.unexported_function_count += 1;
                 }
             }
             // Standalone variable declaration with arrow/function expression init
             Statement::VariableDeclaration(var_decl) => {
-                if self.current_export_names.is_empty()
-                    && self.function_builder_stack.is_empty()
-                {
+                if self.current_export_names.is_empty() && self.function_builder_stack.is_empty() {
                     for declarator in &var_decl.declarations {
                         if let Some(init) = &declarator.init {
                             if matches!(

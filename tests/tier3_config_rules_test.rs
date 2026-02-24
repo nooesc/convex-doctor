@@ -1,5 +1,7 @@
 use convex_doctor::diagnostic::Severity;
-use convex_doctor::rules::configuration::{MissingGeneratedCode, MissingTsconfig, OutdatedNodeVersion};
+use convex_doctor::rules::configuration::{
+    MissingGeneratedCode, MissingTsconfig, OutdatedNodeVersion,
+};
 use convex_doctor::rules::{ProjectContext, Rule};
 
 // --- MissingGeneratedCode ---
@@ -88,7 +90,10 @@ fn test_missing_tsconfig_with_schema() {
     assert_eq!(diags.len(), 1);
     assert_eq!(diags[0].rule, "config/missing-tsconfig");
     assert_eq!(diags[0].severity, Severity::Info);
-    assert_eq!(diags[0].message, "No tsconfig.json found in convex/ directory");
+    assert_eq!(
+        diags[0].message,
+        "No tsconfig.json found in convex/ directory"
+    );
     assert_eq!(diags[0].file, "convex/");
 }
 
