@@ -132,6 +132,36 @@ impl<'a> ConvexVisitor<'a> {
         }
     }
 
+    /// Find the base defineTable(...) call start offset for a chained .index(...) expression.
+    fn find_define_table_call_start(expr: &Expression<'_>) -> Option<u32> {
+        match expr {
+            Expression::CallExpression(call) => match &call.callee {
+                Expression::Identifier(ident) if ident.name.as_str() == "defineTable" => {
+                    Some(call.span.start)
+                }
+                Expression::StaticMemberExpression(mem) => {
+                    Self::find_define_table_call_start(&mem.object)
+                }
+                _ => Self::find_define_table_call_start(&call.callee),
+            },
+            Expression::StaticMemberExpression(mem) => {
+                Self::find_define_table_call_start(&mem.object)
+            }
+            _ => None,
+        }
+    }
+
+    /// Resolve a stable table identity for .index(...) calls.
+    fn get_index_table_id(callee: &Expression<'_>) -> Option<String> {
+        let Expression::StaticMemberExpression(mem) = callee else {
+            return None;
+        };
+        if mem.property.name.as_str() != "index" {
+            return None;
+        }
+        Self::find_define_table_call_start(&mem.object).map(|start| format!("table@{start}"))
+    }
+
     /// Check if an expression chain contains "ctx.auth" at any point.
     fn contains_ctx_auth(expr: &Expression<'_>) -> bool {
         match expr {
@@ -247,9 +277,8 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                             self.line_col(prop.value.span().start).0;
                                         let handler_end_line =
                                             self.line_col(prop.value.span().end).0;
-                                        builder.handler_line_count = handler_end_line
-                                            .saturating_sub(handler_start_line)
-                                            + 1;
+                                        builder.handler_line_count =
+                                            handler_end_line.saturating_sub(handler_start_line) + 1;
                                     }
                                     _ => {}
                                 }
@@ -259,11 +288,13 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 } else if !it.arguments.is_empty() {
                     // Old function syntax: direct function arg instead of config object
                     // e.g., query(async (ctx) => ...) instead of query({ handler: ... })
-                    self.analysis.old_syntax_functions.push(super::CallLocation {
-                        line,
-                        col,
-                        detail: format!("{}() using old function syntax", export_name),
-                    });
+                    self.analysis
+                        .old_syntax_functions
+                        .push(super::CallLocation {
+                            line,
+                            col,
+                            detail: format!("{}() using old function syntax", export_name),
+                        });
                 }
 
                 self.building_function = Some(builder);
@@ -386,17 +417,16 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         }
 
         // Detect v.object()/v.array() nesting depth for schema deep-nesting rule
-        let is_validator_nesting =
-            if let Expression::StaticMemberExpression(mem) = &it.callee {
-                if let Expression::Identifier(ident) = &mem.object {
-                    ident.name.as_str() == "v"
-                        && matches!(mem.property.name.as_str(), "object" | "array")
-                } else {
-                    false
-                }
+        let is_validator_nesting = if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if let Expression::Identifier(ident) = &mem.object {
+                ident.name.as_str() == "v"
+                    && matches!(mem.property.name.as_str(), "object" | "array")
             } else {
                 false
-            };
+            }
+        } else {
+            false
+        };
 
         if is_validator_nesting {
             self.validator_nesting_depth += 1;
@@ -437,6 +467,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         // Detect .index("name", ["field1", "field2"]) calls for schema redundant-index rule
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             if mem.property.name.as_str() == "index" && it.arguments.len() >= 2 {
+                let table = Self::get_index_table_id(&it.callee).unwrap_or_default();
                 let index_name = it.arguments.first().and_then(|arg| {
                     arg.as_expression().and_then(|e| {
                         if let Expression::StringLiteral(s) = e {
@@ -470,7 +501,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 });
                 if let (Some(name), Some(fields)) = (index_name, fields) {
                     self.analysis.index_definitions.push(IndexDef {
-                        table: String::new(), // Table name requires deeper analysis
+                        table,
                         name,
                         fields,
                         line,
@@ -558,15 +589,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
     fn visit_string_literal(&mut self, it: &StringLiteral<'a>) {
         let value = it.value.as_str();
         let secret_prefixes = [
-            "sk-",
-            "pk-",
-            "AKIA",
-            "ghp_",
-            "gho_",
-            "sk_live_",
-            "sk_test_",
-            "pk_live_",
-            "pk_test_",
+            "sk-", "pk-", "AKIA", "ghp_", "gho_", "sk_live_", "sk_test_", "pk_live_", "pk_test_",
         ];
         for prefix in &secret_prefixes {
             if value.starts_with(prefix) && value.len() > 10 {

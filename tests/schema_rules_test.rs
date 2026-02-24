@@ -2,6 +2,7 @@ use convex_doctor::rules::context::analyze_file;
 use convex_doctor::rules::schema::*;
 use convex_doctor::rules::Rule;
 use std::path::Path;
+use tempfile::TempDir;
 
 #[test]
 fn test_deep_nesting_detected() {
@@ -49,5 +50,39 @@ fn test_redundant_index_detected() {
         "Should detect that by_author is a prefix of by_author_title. Found {} index definitions: {:?}",
         analysis.index_definitions.len(),
         analysis.index_definitions.iter().map(|i| format!("{}({:?})", i.name, i.fields)).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_redundant_index_not_cross_table() {
+    let dir = TempDir::new().unwrap();
+    let schema_path = dir.path().join("schema.ts");
+    std::fs::write(
+        &schema_path,
+        r#"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  users: defineTable({
+    userId: v.string(),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  posts: defineTable({
+    userId: v.string(),
+    createdAt: v.number(),
+  }).index("by_user_created", ["userId", "createdAt"]),
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&schema_path).unwrap();
+    let rule = RedundantIndex;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "Indexes from different tables should not be compared as redundant"
     );
 }

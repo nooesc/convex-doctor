@@ -102,7 +102,7 @@ impl Rule for RedundantIndex {
         let mut diagnostics = vec![];
         for (i, idx) in analysis.index_definitions.iter().enumerate() {
             for other in analysis.index_definitions.iter().skip(i + 1) {
-                if idx.table == other.table || idx.table.is_empty() || other.table.is_empty() {
+                if !idx.table.is_empty() && idx.table == other.table {
                     // Check if idx.fields is a strict prefix of other.fields
                     if idx.fields.len() < other.fields.len()
                         && idx
