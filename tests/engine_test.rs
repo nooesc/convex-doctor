@@ -155,3 +155,55 @@ export const bad = query({
         "Parse failures should surface in diagnostics output"
     );
 }
+
+#[test]
+fn test_engine_diff_includes_untracked_files() {
+    let dir = TempDir::new().unwrap();
+    let convex_dir = dir.path().join("convex");
+    std::fs::create_dir(&convex_dir).unwrap();
+    std::fs::write(
+        convex_dir.join("messages.ts"),
+        r#"
+import { query } from "convex/server";
+
+export const getMessages = query({
+  args: {},
+  returns: 42,
+  handler: async () => {
+    return 1;
+  },
+});
+"#,
+    )
+    .unwrap();
+    init_git_repo(dir.path());
+
+    std::fs::write(
+        convex_dir.join("new-message.ts"),
+        "export const newMessage = 1;",
+    )
+    .unwrap();
+
+    let result = convex_doctor::engine::run(dir.path(), false, Some("HEAD")).unwrap();
+    assert_eq!(result.files_scanned, 1);
+}
+
+#[test]
+fn test_engine_diff_includes_deleted_files_in_git_change_set() {
+    let dir = TempDir::new().unwrap();
+    let convex_dir = dir.path().join("convex");
+    std::fs::create_dir(&convex_dir).unwrap();
+    let tracked = convex_dir.join("messages.ts");
+    std::fs::write(
+        &tracked,
+        r#"
+export const deletedMessage = 1;
+"#,
+    )
+    .unwrap();
+    init_git_repo(dir.path());
+    std::fs::remove_file(tracked).unwrap();
+
+    let result = convex_doctor::engine::run(dir.path(), false, Some("HEAD")).unwrap();
+    assert_eq!(result.files_scanned, 0);
+}

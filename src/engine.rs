@@ -176,17 +176,35 @@ fn check_gitignore_contains(root: &Path, pattern: &str) -> bool {
 }
 
 pub fn get_changed_files(root: &Path, base: &str) -> Result<Vec<PathBuf>, String> {
+    let mut changed_files: std::collections::HashSet<PathBuf> = get_git_paths(
+        root,
+        &["diff", "--name-only", "--diff-filter=ACMRTUXB", base],
+    )?
+    .into_iter()
+    .map(|p| root.join(p))
+    .collect();
+
+    changed_files.extend(
+        get_git_paths(root, &["ls-files", "--others", "--exclude-standard"])?
+            .into_iter()
+            .map(|p| root.join(p)),
+    );
+
+    Ok(changed_files.into_iter().collect())
+}
+
+fn get_git_paths(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
     let output = std::process::Command::new("git")
-        .args(["diff", "--name-only", base])
+        .args(args)
         .current_dir(root)
         .output()
-        .map_err(|e| format!("failed to run git diff: {e}"))?;
+        .map_err(|e| format!("failed to run git {args:?}: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let msg = stderr.trim();
         return Err(if msg.is_empty() {
-            format!("git diff exited with status {}", output.status)
+            format!("git command exited with status {}", output.status)
         } else {
             msg.to_string()
         });
@@ -194,8 +212,9 @@ pub fn get_changed_files(root: &Path, base: &str) -> Result<Vec<PathBuf>, String
 
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()
-        .map(|l| root.join(l))
-        .filter(|p| p.exists())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(std::borrow::ToString::to_string)
         .collect())
 }
 
