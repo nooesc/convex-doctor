@@ -1,0 +1,34 @@
+[package]
+name = "convex-doctor"
+version = "0.1.0"
+edition = "2021"
+description = "Diagnose your Convex backend for anti-patterns, security issues, and performance problems"
+license = "MIT"
+
+[dependencies]
+oxc_allocator = "0.115"
+oxc_parser = "0.115"
+oxc_ast = "0.115"
+oxc_ast_visit = "0.115"
+oxc_span = "0.115"
+oxc_diagnostics = "0.115"
+clap = { version = "4", features = ["derive"] }
+rayon = "1.10"
+ignore = "0.4"
+owo-colors = "4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+regex = "1"
+miette = { version = "7", features = ["fancy"] }
+thiserror = "2"
+glob = "0.3"
+
+[dev-dependencies]
+tempfile = "3"
+insta = { version = "1", features = ["yaml"] }
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
