@@ -1,10 +1,16 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use std::process;
 
 use convex_doctor::reporter::cli::CliReporter;
 use convex_doctor::reporter::json::JsonReporter;
 use convex_doctor::reporter::Reporter;
+
+#[derive(Clone, Debug, ValueEnum)]
+enum OutputFormat {
+    Cli,
+    Json,
+}
 
 #[derive(Parser)]
 #[command(
@@ -18,8 +24,8 @@ struct Cli {
     path: PathBuf,
 
     /// Output format: cli, json
-    #[arg(long, default_value = "cli")]
-    format: String,
+    #[arg(long, value_enum, default_value_t = OutputFormat::Cli)]
+    format: OutputFormat,
 
     /// Only output the score (0-100)
     #[arg(long)]
@@ -48,8 +54,8 @@ fn main() {
     if cli.score {
         print!("{}", convex_doctor::reporter::score_only(&result.score));
     } else {
-        let output = match cli.format.as_str() {
-            "json" => {
+        let output = match cli.format {
+            OutputFormat::Json => {
                 let reporter = JsonReporter;
                 reporter.format(
                     &result.diagnostics,
@@ -58,7 +64,7 @@ fn main() {
                     cli.verbose,
                 )
             }
-            _ => {
+            OutputFormat::Cli => {
                 let reporter = CliReporter;
                 reporter.format(
                     &result.diagnostics,
