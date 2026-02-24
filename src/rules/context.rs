@@ -4,7 +4,7 @@ use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{walk, Visit};
 use oxc_parser::{ParseOptions, Parser};
-use oxc_span::SourceType;
+use oxc_span::{GetSpan, SourceType};
 
 use super::{
     CallLocation, ConvexFunction, CtxCall, DeprecatedCall, FileAnalysis, FunctionKind, ImportInfo,
@@ -236,11 +236,28 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                 match name.as_ref() {
                                     "args" => builder.has_args_validator = true,
                                     "returns" => builder.has_return_validator = true,
+                                    "handler" => {
+                                        let handler_start_line =
+                                            self.line_col(prop.value.span().start).0;
+                                        let handler_end_line =
+                                            self.line_col(prop.value.span().end).0;
+                                        builder.handler_line_count = handler_end_line
+                                            .saturating_sub(handler_start_line)
+                                            + 1;
+                                    }
                                     _ => {}
                                 }
                             }
                         }
                     }
+                } else if !it.arguments.is_empty() {
+                    // Old function syntax: direct function arg instead of config object
+                    // e.g., query(async (ctx) => ...) instead of query({ handler: ... })
+                    self.analysis.old_syntax_functions.push(super::CallLocation {
+                        line,
+                        col,
+                        detail: format!("{}() using old function syntax", export_name),
+                    });
                 }
 
                 self.building_function = Some(builder);
@@ -248,32 +265,42 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
 
-        // Detect .collect() calls
+        // Detect .collect() and .filter() calls — only on ctx.db query chains
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             let prop_name = mem.property.name.as_str();
             if prop_name == "collect" {
-                self.analysis.collect_calls.push(CallLocation {
-                    line,
-                    col,
-                    detail: "collect()".to_string(),
-                });
+                let full_chain = Self::resolve_member_chain(&it.callee).unwrap_or_default();
+                if full_chain.contains("ctx.db") {
+                    self.analysis.collect_calls.push(CallLocation {
+                        line,
+                        col,
+                        detail: "collect()".to_string(),
+                    });
+                }
             }
 
-            // Detect .filter() calls
             if prop_name == "filter" {
-                self.analysis.filter_calls.push(CallLocation {
-                    line,
-                    col,
-                    detail: "filter()".to_string(),
-                });
+                let full_chain = Self::resolve_member_chain(&it.callee).unwrap_or_default();
+                if full_chain.contains("ctx.db") {
+                    self.analysis.filter_calls.push(CallLocation {
+                        line,
+                        col,
+                        detail: "filter()".to_string(),
+                    });
+                }
             }
         }
 
-        // Detect Date.now() calls
+        // Detect Date.now() calls — only inside query functions
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             if mem.property.name.as_str() == "now" {
                 if let Expression::Identifier(ident) = &mem.object {
-                    if ident.name.as_str() == "Date" {
+                    if ident.name.as_str() == "Date"
+                        && self
+                            .current_function_kind
+                            .as_ref()
+                            .is_some_and(|k| k.is_query())
+                    {
                         self.analysis.date_now_calls.push(CallLocation {
                             line,
                             col,
@@ -333,13 +360,21 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 };
                 self.analysis.ctx_calls.push(ctx_call);
 
-                // If ctx call is inside a loop, record it
+                // If ctx call is inside a loop, record it — only for run*/scheduler calls
                 if self.loop_depth > 0 {
-                    self.analysis.loop_ctx_calls.push(CallLocation {
-                        line,
-                        col,
-                        detail: chain,
-                    });
+                    let loop_relevant_prefixes = [
+                        "ctx.runMutation",
+                        "ctx.runQuery",
+                        "ctx.runAction",
+                        "ctx.scheduler",
+                    ];
+                    if loop_relevant_prefixes.iter().any(|p| chain.starts_with(p)) {
+                        self.analysis.loop_ctx_calls.push(CallLocation {
+                            line,
+                            col,
+                            detail: chain,
+                        });
+                    }
                 }
             }
         }
@@ -399,5 +434,32 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         self.loop_depth += 1;
         walk::walk_for_in_statement(self, it);
         self.loop_depth -= 1;
+    }
+
+    fn visit_string_literal(&mut self, it: &StringLiteral<'a>) {
+        let value = it.value.as_str();
+        let secret_prefixes = [
+            "sk-",
+            "pk-",
+            "AKIA",
+            "ghp_",
+            "gho_",
+            "sk_live_",
+            "sk_test_",
+            "pk_live_",
+            "pk_test_",
+        ];
+        for prefix in &secret_prefixes {
+            if value.starts_with(prefix) && value.len() > 10 {
+                let (line, col) = self.line_col(it.span.start);
+                self.analysis.hardcoded_secrets.push(super::CallLocation {
+                    line,
+                    col,
+                    detail: format!("String starting with '{prefix}' looks like a secret"),
+                });
+                break;
+            }
+        }
+        walk::walk_string_literal(self, it);
     }
 }

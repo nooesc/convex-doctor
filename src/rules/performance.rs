@@ -62,12 +62,7 @@ impl Rule for DateNowInQuery {
         Category::Performance
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        // Only flag Date.now() if the file contains query functions
-        let has_query = analysis.functions.iter().any(|f| f.kind.is_query());
-        if !has_query {
-            return vec![];
-        }
-
+        // Date.now() calls are already filtered to query functions at analysis time
         analysis
             .date_now_calls
             .iter()

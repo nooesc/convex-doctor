@@ -38,3 +38,12 @@ export const create = mutation({
         "Should detect deprecated v.bigint()"
     );
 }
+
+#[test]
+fn test_old_function_syntax() {
+    let analysis = analyze_file(Path::new("tests/fixtures/old_syntax.ts")).unwrap();
+    assert!(
+        !analysis.old_syntax_functions.is_empty(),
+        "Should detect old function syntax"
+    );
+}

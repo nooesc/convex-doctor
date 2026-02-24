@@ -53,9 +53,21 @@ impl Rule for OldFunctionSyntax {
     fn category(&self) -> Category {
         Category::Correctness
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        // Needs analyzer enhancement to detect old syntax (e.g., `export default query(...)`)
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .old_syntax_functions
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!("Old function syntax: {}", c.detail),
+                help: "Use `query({ args: ..., handler: async (ctx, args) => ... })` instead of `query(async (ctx) => ...)`.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
     }
 }
 

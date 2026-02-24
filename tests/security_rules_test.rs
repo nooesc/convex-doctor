@@ -62,3 +62,12 @@ fn test_auth_check_not_flagged_when_present() {
         "getMessages has auth"
     );
 }
+
+#[test]
+fn test_hardcoded_secrets() {
+    let analysis = analyze_file(Path::new("tests/fixtures/secrets_test.ts")).unwrap();
+    assert!(
+        !analysis.hardcoded_secrets.is_empty(),
+        "Should detect hardcoded secret"
+    );
+}

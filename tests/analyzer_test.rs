@@ -77,3 +77,16 @@ fn test_analyze_imports() {
     assert!(analysis.imports.iter().any(|i| i.source == "convex/server"));
     assert!(analysis.imports.iter().any(|i| i.source == "convex/values"));
 }
+
+#[test]
+fn test_handler_line_count() {
+    let analysis = analyze_file(Path::new("tests/fixtures/basic_query.ts")).unwrap();
+    // basic_query.ts has handlers -- verify line count is > 0
+    for f in &analysis.functions {
+        assert!(
+            f.handler_line_count > 0,
+            "Handler line count should be computed for function {}",
+            f.name
+        );
+    }
+}

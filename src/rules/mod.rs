@@ -19,6 +19,7 @@ pub struct FileAnalysis {
     pub loop_ctx_calls: Vec<CallLocation>,
     pub deprecated_calls: Vec<DeprecatedCall>,
     pub hardcoded_secrets: Vec<CallLocation>,
+    pub old_syntax_functions: Vec<CallLocation>,
     pub exported_function_count: u32,
     pub schema_nesting_depth: u32,
     pub schema_array_id_fields: Vec<CallLocation>,
