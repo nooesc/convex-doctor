@@ -1113,7 +1113,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     hook_name: name.to_string(),
                     line,
                     col,
-                    in_render_body: false, // Disabled: heuristic too unreliable for static analysis
+                    in_render_body: true,
                 });
             }
         }

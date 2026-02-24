@@ -1,6 +1,10 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex, OnceLock};
+
+static IGNORE_PATTERN_CACHE: OnceLock<Mutex<HashMap<String, Arc<Vec<glob::Pattern>>>>> =
+    OnceLock::new();
 
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
@@ -31,6 +35,27 @@ impl Default for IgnoreConfig {
 }
 
 impl Config {
+    fn cached_ignore_patterns(&self) -> Arc<Vec<glob::Pattern>> {
+        let key = self.ignore.files.join("\n");
+        let cache = IGNORE_PATTERN_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        let mut cache = cache.lock().unwrap_or_else(|e| e.into_inner());
+
+        if let Some(patterns) = cache.get(&key) {
+            return Arc::clone(patterns);
+        }
+
+        let patterns: Vec<glob::Pattern> = self
+            .ignore
+            .files
+            .iter()
+            .flat_map(|pattern| Self::glob_candidates(pattern))
+            .filter_map(|candidate| glob::Pattern::new(&candidate).ok())
+            .collect();
+        let patterns = Arc::new(patterns);
+        cache.insert(key, Arc::clone(&patterns));
+        patterns
+    }
+
     pub fn load(project_root: &Path) -> Result<Self, String> {
         let config_path = project_root.join("convex-doctor.toml");
         if !config_path.exists() {
@@ -55,19 +80,18 @@ impl Config {
             .unwrap_or_else(|_| absolute.clone());
         let relative_with_dot = format!("./{relative}");
         let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        let ignore_patterns = self.cached_ignore_patterns();
+
+        for pattern in ignore_patterns.iter() {
+            if pattern.matches(&relative)
+                || pattern.matches(&relative_with_dot)
+                || pattern.matches(&absolute)
+            {
+                return true;
+            }
+        }
 
         for pattern in &self.ignore.files {
-            for candidate in Self::glob_candidates(pattern) {
-                if let Ok(glob) = glob::Pattern::new(&candidate) {
-                    if glob.matches(&relative)
-                        || glob.matches(&relative_with_dot)
-                        || glob.matches(&absolute)
-                    {
-                        return true;
-                    }
-                }
-            }
-
             let normalized = pattern.replace('\\', "/").trim().to_string();
             if !normalized.contains('/') && !file_name.is_empty() {
                 if let Ok(basename_glob) = glob::Pattern::new(&normalized) {

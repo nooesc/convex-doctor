@@ -76,7 +76,7 @@ impl Rule for OutdatedNodeVersion {
     }
     fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
         if let Some(ref version_str) = ctx.node_version_from_config {
-            if let Ok(version) = version_str.parse::<u32>() {
+            if let Some(version) = Self::parse_major_node_version(version_str) {
                 if version <= 18 {
                     return vec![Diagnostic {
                         rule: self.id().to_string(),
@@ -96,6 +96,13 @@ impl Rule for OutdatedNodeVersion {
             }
         }
         vec![]
+    }
+
+    fn parse_major_node_version(version_str: &str) -> Option<u32> {
+        version_str
+            .split(|c: char| !c.is_ascii_digit())
+            .find(|part| !part.is_empty())
+            .and_then(|part| part.parse::<u32>().ok())
     }
 }
 
