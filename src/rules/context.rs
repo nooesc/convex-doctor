@@ -8,6 +8,7 @@ use oxc_span::{GetSpan, SourceType};
 
 use super::{
     CallLocation, ConvexFunction, CtxCall, DeprecatedCall, FileAnalysis, FunctionKind, ImportInfo,
+    IndexDef,
 };
 
 /// Analyze a TypeScript/JavaScript file for Convex-specific patterns.
@@ -71,6 +72,8 @@ struct ConvexVisitor<'a> {
     current_export_name: Option<String>,
     current_function_kind: Option<FunctionKind>,
     building_function: Option<FunctionBuilder>,
+    validator_nesting_depth: u32,
+    max_validator_nesting_depth: u32,
 }
 
 impl<'a> ConvexVisitor<'a> {
@@ -86,10 +89,13 @@ impl<'a> ConvexVisitor<'a> {
             current_export_name: None,
             current_function_kind: None,
             building_function: None,
+            validator_nesting_depth: 0,
+            max_validator_nesting_depth: 0,
         }
     }
 
-    fn into_analysis(self) -> FileAnalysis {
+    fn into_analysis(mut self) -> FileAnalysis {
+        self.analysis.schema_nesting_depth = self.max_validator_nesting_depth;
         self.analysis
     }
 
@@ -379,6 +385,114 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
 
+        // Detect v.object()/v.array() nesting depth for schema deep-nesting rule
+        let is_validator_nesting =
+            if let Expression::StaticMemberExpression(mem) = &it.callee {
+                if let Expression::Identifier(ident) = &mem.object {
+                    ident.name.as_str() == "v"
+                        && matches!(mem.property.name.as_str(), "object" | "array")
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+        if is_validator_nesting {
+            self.validator_nesting_depth += 1;
+            if self.validator_nesting_depth > self.max_validator_nesting_depth {
+                self.max_validator_nesting_depth = self.validator_nesting_depth;
+            }
+        }
+
+        // Detect v.array(v.id(...)) pattern for schema array-relationships rule
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if let Expression::Identifier(ident) = &mem.object {
+                if ident.name.as_str() == "v" && mem.property.name.as_str() == "array" {
+                    if let Some(first_arg) = it.arguments.first() {
+                        if let Some(Expression::CallExpression(inner_call)) =
+                            first_arg.as_expression()
+                        {
+                            if let Expression::StaticMemberExpression(inner_mem) =
+                                &inner_call.callee
+                            {
+                                if let Expression::Identifier(inner_ident) = &inner_mem.object {
+                                    if inner_ident.name.as_str() == "v"
+                                        && inner_mem.property.name.as_str() == "id"
+                                    {
+                                        self.analysis.schema_array_id_fields.push(CallLocation {
+                                            line,
+                                            col,
+                                            detail: "v.array(v.id(...))".to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Detect .index("name", ["field1", "field2"]) calls for schema redundant-index rule
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if mem.property.name.as_str() == "index" && it.arguments.len() >= 2 {
+                let index_name = it.arguments.first().and_then(|arg| {
+                    arg.as_expression().and_then(|e| {
+                        if let Expression::StringLiteral(s) = e {
+                            Some(s.value.as_str().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                });
+                let fields = it.arguments.get(1).and_then(|arg| {
+                    arg.as_expression().and_then(|e| {
+                        if let Expression::ArrayExpression(arr) = e {
+                            Some(
+                                arr.elements
+                                    .iter()
+                                    .filter_map(|el| {
+                                        el.as_expression().and_then(|e| {
+                                            if let Expression::StringLiteral(s) = e {
+                                                Some(s.value.as_str().to_string())
+                                            } else {
+                                                None
+                                            }
+                                        })
+                                    })
+                                    .collect::<Vec<_>>(),
+                            )
+                        } else {
+                            None
+                        }
+                    })
+                });
+                if let (Some(name), Some(fields)) = (index_name, fields) {
+                    self.analysis.index_definitions.push(IndexDef {
+                        table: String::new(), // Table name requires deeper analysis
+                        name,
+                        fields,
+                        line,
+                    });
+                }
+            }
+        }
+
+        // Detect .first() on ctx.db query chains for correctness/missing-unique rule
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if mem.property.name.as_str() == "first" {
+                let full_chain = Self::resolve_member_chain(&it.callee).unwrap_or_default();
+                if full_chain.contains("ctx.db") {
+                    self.analysis.first_calls.push(CallLocation {
+                        line,
+                        col,
+                        detail: full_chain,
+                    });
+                }
+            }
+        }
+
         // Check for ctx.auth in the callee chain (for auth check detection)
         if Self::contains_ctx_auth(&it.callee) {
             if let Some(ref mut builder) = self.building_function {
@@ -387,6 +501,11 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         }
 
         walk::walk_call_expression(self, it);
+
+        // Restore validator nesting depth after walking children
+        if is_validator_nesting {
+            self.validator_nesting_depth -= 1;
+        }
     }
 
     fn visit_expression(&mut self, it: &Expression<'a>) {

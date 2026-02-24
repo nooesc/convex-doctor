@@ -1,5 +1,5 @@
 use crate::diagnostic::{Category, Diagnostic, Severity};
-use crate::rules::{FileAnalysis, Rule};
+use crate::rules::{FileAnalysis, ProjectContext, Rule};
 
 pub struct MissingArgValidators;
 impl Rule for MissingArgValidators {
@@ -164,5 +164,54 @@ impl Rule for HardcodedSecrets {
                 column: secret.col,
             })
             .collect()
+    }
+}
+
+/// Project-level rule: error when .env.local exists but is not in .gitignore.
+pub struct EnvNotGitignored;
+impl Rule for EnvNotGitignored {
+    fn id(&self) -> &'static str {
+        "security/env-not-gitignored"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        vec![]
+    }
+    fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
+        if ctx.has_env_local && !ctx.env_gitignored {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: ".env.local exists but is not in .gitignore".to_string(),
+                help: "Add `.env.local` to your .gitignore to prevent committing secrets."
+                    .to_string(),
+                file: ".env.local".to_string(),
+                line: 0,
+                column: 0,
+            }]
+        } else {
+            vec![]
+        }
+    }
+}
+
+/// Stub: detect access control based on spoofable client arguments.
+/// TODO: Implement detection of functions that use args like `userId`, `role`,
+/// `isAdmin` for access control decisions without verifying via ctx.auth.
+pub struct SpoofableAccessControl;
+impl Rule for SpoofableAccessControl {
+    fn id(&self) -> &'static str {
+        "security/spoofable-access-control"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Stub: this rule requires deep data-flow analysis to detect reliably.
+        // Will be implemented in a future version.
+        vec![]
     }
 }

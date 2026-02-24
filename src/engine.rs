@@ -7,7 +7,7 @@ use crate::config::Config;
 use crate::diagnostic::Diagnostic;
 use crate::project::ProjectInfo;
 use crate::rules::context::analyze_file;
-use crate::rules::RuleRegistry;
+use crate::rules::{ProjectContext, RuleRegistry};
 use crate::scoring::{compute_score, ScoreResult};
 
 pub struct EngineResult {
@@ -47,19 +47,45 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
 
     let files_scanned = files.len();
 
-    let all_diagnostics: Vec<Diagnostic> = files
+    // Analyze all files in parallel
+    let analyses: Vec<_> = files
         .par_iter()
-        .flat_map(|file| {
-            let analysis = match analyze_file(file) {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("Warning: {e}");
-                    return vec![];
-                }
-            };
-            registry.run(&analysis, &|rule_id| config.is_rule_enabled(rule_id))
+        .filter_map(|file| match analyze_file(file) {
+            Ok(a) => Some(a),
+            Err(e) => {
+                eprintln!("Warning: {e}");
+                None
+            }
         })
         .collect();
+
+    // Run per-file rules in parallel
+    let mut all_diagnostics: Vec<Diagnostic> = analyses
+        .par_iter()
+        .flat_map(|analysis| registry.run(analysis, &|rule_id| config.is_rule_enabled(rule_id)))
+        .collect();
+
+    // Build project context and run project-level rules
+    let uses_auth = analyses
+        .iter()
+        .any(|a| a.functions.iter().any(|f| f.has_auth_check));
+    let project_ctx = ProjectContext {
+        has_schema: project.has_schema,
+        has_auth_config: project.has_auth_config,
+        has_convex_json: project.has_convex_json,
+        has_env_local: path.join(".env.local").exists(),
+        env_gitignored: check_gitignore_contains(path, ".env.local"),
+        uses_auth,
+    };
+
+    let project_diagnostics: Vec<Diagnostic> = registry
+        .rules()
+        .iter()
+        .filter(|r| config.is_rule_enabled(r.id()))
+        .flat_map(|r| r.check_project(&project_ctx))
+        .collect();
+
+    all_diagnostics.extend(project_diagnostics);
 
     let score = compute_score(&all_diagnostics);
 
@@ -75,6 +101,18 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
         files_scanned,
         fail_below: config.ci.fail_below,
     })
+}
+
+fn check_gitignore_contains(root: &Path, pattern: &str) -> bool {
+    let gitignore_path = root.join(".gitignore");
+    if let Ok(contents) = std::fs::read_to_string(&gitignore_path) {
+        contents.lines().any(|line| {
+            let trimmed = line.trim();
+            trimmed == pattern || trimmed == format!("/{}", pattern)
+        })
+    } else {
+        false
+    }
 }
 
 pub fn get_changed_files(root: &Path, base: &str) -> Vec<PathBuf> {

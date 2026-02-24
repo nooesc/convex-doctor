@@ -128,3 +128,69 @@ impl Rule for DeprecatedApi {
             .collect()
     }
 }
+
+/// Stub: detect imports from the wrong Convex runtime.
+/// TODO: Implement cross-file analysis to detect when a "use node" file imports
+/// from a non-"use node" file or vice versa.
+pub struct WrongRuntimeImport;
+impl Rule for WrongRuntimeImport {
+    fn id(&self) -> &'static str {
+        "correctness/wrong-runtime-import"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Stub: requires cross-file import graph analysis.
+        // Will be implemented in a future version.
+        vec![]
+    }
+}
+
+/// Stub: detect when a function reference is passed directly instead of using api.* reference.
+/// TODO: Implement detection of patterns like `ctx.runQuery(getMessages)` instead of
+/// `ctx.runQuery(api.messages.getMessages)`.
+pub struct DirectFunctionRef;
+impl Rule for DirectFunctionRef {
+    fn id(&self) -> &'static str {
+        "correctness/direct-function-ref"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Stub: requires type analysis to distinguish function references from api.* references.
+        // Will be implemented in a future version.
+        vec![]
+    }
+}
+
+/// Per-file rule: suggest .unique() when .first() is used on an indexed query.
+pub struct MissingUnique;
+impl Rule for MissingUnique {
+    fn id(&self) -> &'static str {
+        "correctness/missing-unique"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .first_calls
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "Using `.first()` on an indexed query: {}",
+                    c.detail
+                ),
+                help: "If you expect exactly one result, use `.unique()` instead of `.first()` to get a runtime error when the assumption is violated.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}

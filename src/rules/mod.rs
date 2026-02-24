@@ -1,7 +1,9 @@
 pub mod architecture;
+pub mod configuration;
 pub mod context;
 pub mod correctness;
 pub mod performance;
+pub mod schema;
 pub mod security;
 
 use crate::diagnostic::{Category, Diagnostic};
@@ -24,6 +26,7 @@ pub struct FileAnalysis {
     pub schema_nesting_depth: u32,
     pub schema_array_id_fields: Vec<CallLocation>,
     pub index_definitions: Vec<IndexDef>,
+    pub first_calls: Vec<CallLocation>,
 }
 
 #[derive(Debug, Clone)]
@@ -144,10 +147,25 @@ pub struct IndexDef {
     pub line: u32,
 }
 
+#[derive(Debug, Default)]
+pub struct ProjectContext {
+    pub has_schema: bool,
+    pub has_auth_config: bool,
+    pub has_convex_json: bool,
+    pub has_env_local: bool,
+    pub env_gitignored: bool,
+    pub uses_auth: bool,
+}
+
 pub trait Rule: Send + Sync {
     fn id(&self) -> &'static str;
     fn category(&self) -> Category;
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic>;
+    /// Project-level check, called once after all files are analyzed.
+    /// Default returns empty.
+    fn check_project(&self, _ctx: &ProjectContext) -> Vec<Diagnostic> {
+        vec![]
+    }
 }
 
 pub struct RuleRegistry {
@@ -163,21 +181,42 @@ impl Default for RuleRegistry {
 impl RuleRegistry {
     pub fn new() -> Self {
         let rules: Vec<Box<dyn Rule>> = vec![
+            // Security (7)
             Box::new(security::MissingArgValidators),
             Box::new(security::MissingReturnValidators),
             Box::new(security::MissingAuthCheck),
             Box::new(security::InternalApiMisuse),
             Box::new(security::HardcodedSecrets),
+            Box::new(security::EnvNotGitignored),
+            Box::new(security::SpoofableAccessControl),
+            // Performance (7)
             Box::new(performance::UnboundedCollect),
             Box::new(performance::FilterWithoutIndex),
             Box::new(performance::DateNowInQuery),
             Box::new(performance::LoopRunMutation),
+            Box::new(performance::SequentialRunCalls),
+            Box::new(performance::UnnecessaryRunAction),
+            Box::new(performance::HelperVsRun),
+            // Correctness (7)
             Box::new(correctness::UnwaitedPromise),
             Box::new(correctness::OldFunctionSyntax),
             Box::new(correctness::DbInAction),
             Box::new(correctness::DeprecatedApi),
+            Box::new(correctness::WrongRuntimeImport),
+            Box::new(correctness::DirectFunctionRef),
+            Box::new(correctness::MissingUnique),
+            // Schema (4)
+            Box::new(schema::MissingSchema),
+            Box::new(schema::DeepNesting),
+            Box::new(schema::ArrayRelationships),
+            Box::new(schema::RedundantIndex),
+            // Architecture (3)
             Box::new(architecture::LargeHandler),
             Box::new(architecture::MonolithicFile),
+            Box::new(architecture::DuplicatedAuth),
+            // Configuration (2)
+            Box::new(configuration::MissingConvexJson),
+            Box::new(configuration::MissingAuthConfig),
         ];
 
         RuleRegistry { rules }

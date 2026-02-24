@@ -63,3 +63,39 @@ impl Rule for MonolithicFile {
         }
     }
 }
+
+/// Per-file rule: warn when 3+ functions in the same file have inline auth checks,
+/// suggesting the auth pattern should be extracted into a shared helper.
+pub struct DuplicatedAuth;
+impl Rule for DuplicatedAuth {
+    fn id(&self) -> &'static str {
+        "arch/duplicated-auth"
+    }
+    fn category(&self) -> Category {
+        Category::Architecture
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let auth_function_count = analysis
+            .functions
+            .iter()
+            .filter(|f| f.has_auth_check)
+            .count();
+        if auth_function_count >= 3 {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "{} functions contain inline auth checks",
+                    auth_function_count
+                ),
+                help: "Extract authentication logic into a shared helper function to avoid copy-pasting the same auth pattern.".to_string(),
+                file: analysis.file_path.clone(),
+                line: 1,
+                column: 1,
+            }]
+        } else {
+            vec![]
+        }
+    }
+}
