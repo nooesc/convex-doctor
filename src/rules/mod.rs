@@ -45,7 +45,6 @@ pub struct FileAnalysis {
     pub unexported_function_count: u32,
     pub convex_hook_calls: Vec<ConvexHookCall>,
     pub has_convex_provider: bool,
-    pub is_component_file: bool,
 }
 
 #[derive(Debug, Clone)]

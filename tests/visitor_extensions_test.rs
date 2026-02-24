@@ -649,3 +649,26 @@ function App() {
         "Should NOT flag has_convex_provider when ConvexProvider not imported"
     );
 }
+
+// --------------------------------------------------------------------------
+// 16. Collect-then-filter detection
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_collect_then_filter_visitor_detection() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("ctf.ts");
+    std::fs::write(&path, r#"
+import { query } from "convex/server";
+export const list = query({
+  handler: async (ctx) => {
+    const all = await ctx.db.query("items").collect();
+    const filtered = all.filter(item => item.active);
+    return filtered;
+  },
+});
+"#).unwrap();
+    let analysis = analyze_file(&path).unwrap();
+    assert!(!analysis.collect_variable_filters.is_empty(),
+        "Should detect collect-then-filter pattern");
+}

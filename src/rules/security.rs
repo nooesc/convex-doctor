@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
@@ -421,7 +421,7 @@ impl Rule for HttpMissingCors {
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
         // Group routes by path
-        let mut routes_by_path: HashMap<&str, Vec<&str>> = HashMap::new();
+        let mut routes_by_path: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for route in &analysis.http_routes {
             routes_by_path
                 .entry(route.path.as_str())

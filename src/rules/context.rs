@@ -81,6 +81,7 @@ struct ConvexVisitor<'a> {
     function_builder_stack: Vec<FunctionBuilder>,
     validator_nesting_depth: u32,
     max_validator_nesting_depth: u32,
+    collect_variables: Vec<String>,
 }
 
 impl<'a> ConvexVisitor<'a> {
@@ -101,6 +102,7 @@ impl<'a> ConvexVisitor<'a> {
             function_builder_stack: vec![],
             validator_nesting_depth: 0,
             max_validator_nesting_depth: 0,
+            collect_variables: vec![],
         }
     }
 
@@ -561,6 +563,10 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         col,
                         detail: "collect()".to_string(),
                     });
+                    // Track variables assigned from ctx.db.*.collect() for collect-then-filter detection
+                    if let Some(ref target) = self.current_assignment_target {
+                        self.collect_variables.push(target.clone());
+                    }
                 }
             }
 
@@ -572,6 +578,18 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         col,
                         detail: "filter()".to_string(),
                     });
+                }
+
+                // Detect .filter() on variables that hold collect() results
+                if let Expression::Identifier(ident) = &mem.object {
+                    let var_name = ident.name.as_str();
+                    if self.collect_variables.iter().any(|v| v == var_name) {
+                        self.analysis.collect_variable_filters.push(CallLocation {
+                            line,
+                            col,
+                            detail: format!("{}.filter() after .collect() — filter in JS instead of using an index", var_name),
+                        });
+                    }
                 }
             }
         }

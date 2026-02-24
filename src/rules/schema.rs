@@ -272,24 +272,10 @@ impl Rule for MissingIndexForQuery {
     fn category(&self) -> Category {
         Category::Schema
     }
-    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        // Per-file portion: we cannot access the project-wide index list here,
-        // so this rule is primarily a project-level check.  We store nothing.
-        let _ = analysis;
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
         vec![]
     }
     fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
-        // Collect all first-field names from every index definition.
-        let indexed_first_fields: std::collections::HashSet<&str> = ctx
-            .all_index_definitions
-            .iter()
-            .filter_map(|idx| idx.fields.first().map(|f| f.as_str()))
-            .collect();
-
-        // Because check_project only receives ProjectContext (not per-file
-        // analyses), we cannot iterate filter_field_names here.  Leave a
-        // diagnostic only when there are zero database indexes defined at all
-        // but the project has a schema — this is a degenerate but useful signal.
         if ctx.has_schema && ctx.all_index_definitions.is_empty() {
             return vec![Diagnostic {
                 rule: self.id().to_string(),
@@ -303,10 +289,6 @@ impl Rule for MissingIndexForQuery {
                 column: 1,
             }];
         }
-
-        // For the purpose of keeping the indexed_first_fields set used (avoid
-        // dead-code warning) and to provide a useful future hook:
-        let _ = indexed_first_fields;
 
         vec![]
     }
