@@ -74,6 +74,16 @@ impl Rule for MissingAuthCheck {
         Category::Security
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Skip conventional admin/migration directories — public functions in
+        // _scripts/ or _internal/ are typically only called from admin tooling.
+        if analysis.file_path.contains("/_scripts/")
+            || analysis.file_path.contains("/_internal/")
+            || analysis.file_path.contains("\\_scripts\\")
+            || analysis.file_path.contains("\\_internal\\")
+        {
+            return vec![];
+        }
+
         analysis
             .functions
             .iter()

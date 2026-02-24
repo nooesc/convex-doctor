@@ -686,7 +686,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
 
-        // Detect deprecated API calls (e.g., v.bigint(), v.bytes(), v.any())
+        // Detect deprecated API calls (e.g., v.bigint(), v.bytes())
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             if let Expression::Identifier(ident) = &mem.object {
                 if ident.name.as_str() == "v" {
@@ -696,10 +696,8 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         "bytes" => {
                             Some(("v.bytes()", "Use v.string() with base64 encoding instead"))
                         }
-                        "any" => Some((
-                            "v.any()",
-                            "Use a specific validator type for better type safety",
-                        )),
+                        // v.any() is NOT deprecated — it's flagged separately by
+                        // security/generic-mutation-args when used in public arg validators.
                         _ => None,
                     };
                     if let Some((name, replacement)) = deprecated {

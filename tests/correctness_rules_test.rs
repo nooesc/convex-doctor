@@ -41,6 +41,33 @@ export const create = mutation({
 }
 
 #[test]
+fn test_v_any_not_flagged_as_deprecated() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("any_validator.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const create = mutation({
+  args: { data: v.any() },
+  handler: async (ctx, args) => {},
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = DeprecatedApi;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "v.any() should NOT be flagged as deprecated (it's handled by security/generic-mutation-args)"
+    );
+}
+
+#[test]
 fn test_old_function_syntax() {
     let analysis = analyze_file(Path::new("tests/fixtures/old_syntax.ts")).unwrap();
     assert!(
