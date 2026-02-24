@@ -116,6 +116,10 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
                 .iter()
                 .flat_map(|a| a.schema_id_fields.clone())
                 .collect(),
+            all_filter_field_names: analyses
+                .iter()
+                .flat_map(|a| a.filter_field_names.clone())
+                .collect(),
         };
 
         let project_diagnostics: Vec<Diagnostic> = registry

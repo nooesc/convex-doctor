@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::Path;
 
 use oxc_allocator::Allocator;
@@ -81,7 +83,9 @@ struct ConvexVisitor<'a> {
     function_builder_stack: Vec<FunctionBuilder>,
     validator_nesting_depth: u32,
     max_validator_nesting_depth: u32,
-    collect_variables: Vec<String>,
+    collect_variables: HashSet<String>,
+    current_object_property_name: Option<String>,
+    pending_functions: HashMap<String, ConvexFunction>,
 }
 
 impl<'a> ConvexVisitor<'a> {
@@ -102,7 +106,9 @@ impl<'a> ConvexVisitor<'a> {
             function_builder_stack: vec![],
             validator_nesting_depth: 0,
             max_validator_nesting_depth: 0,
-            collect_variables: vec![],
+            collect_variables: HashSet::new(),
+            current_object_property_name: None,
+            pending_functions: HashMap::new(),
         }
     }
 
@@ -147,6 +153,16 @@ impl<'a> ConvexVisitor<'a> {
                 Some(format!("{}.{}", obj, mem.property.name.as_str()))
             }
             Expression::CallExpression(call) => Self::resolve_member_chain(&call.callee),
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(call) => Self::resolve_member_chain(&call.callee),
+                ChainElement::StaticMemberExpression(mem) => {
+                    let obj = Self::resolve_member_chain(&mem.object)?;
+                    Some(format!("{}.{}", obj, mem.property.name.as_str()))
+                }
+                ChainElement::ComputedMemberExpression(_) => None,
+                ChainElement::PrivateFieldExpression(_) => None,
+                _ => None,
+            },
             _ => None,
         }
     }
@@ -203,6 +219,18 @@ impl<'a> ConvexVisitor<'a> {
                 Self::contains_ctx_auth(&mem.object)
             }
             Expression::CallExpression(call) => Self::contains_ctx_auth(&call.callee),
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(call) => Self::contains_ctx_auth(&call.callee),
+                ChainElement::StaticMemberExpression(mem) => {
+                    if let Expression::Identifier(ident) = &mem.object {
+                        if ident.name.as_str() == "ctx" && mem.property.name.as_str() == "auth" {
+                            return true;
+                        }
+                    }
+                    Self::contains_ctx_auth(&mem.object)
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -318,6 +346,19 @@ impl<'a> ConvexVisitor<'a> {
                     }
                 }
             }
+            Expression::FunctionExpression(func) => {
+                if let Some(body) = &func.body {
+                    for stmt in &body.statements {
+                        if let Statement::ExpressionStatement(es) = stmt {
+                            Self::collect_field_calls(&es.expression, fields);
+                        } else if let Statement::ReturnStatement(ret) = stmt {
+                            if let Some(arg) = &ret.argument {
+                                Self::collect_field_calls(arg, fields);
+                            }
+                        }
+                    }
+                }
+            }
             Expression::BinaryExpression(bin) => {
                 Self::collect_field_calls(&bin.left, fields);
                 Self::collect_field_calls(&bin.right, fields);
@@ -418,9 +459,34 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
 
+        // Handle export { foo, bar } specifiers — promote pending functions
+        for spec in &it.specifiers {
+            let local_name = spec.local.name().to_string();
+            if let Some(mut func) = self.pending_functions.remove(&local_name) {
+                // The exported name might differ: export { foo as bar }
+                let exported_name = spec.exported.name().to_string();
+                func.name = exported_name;
+                self.analysis.functions.push(func);
+                self.analysis.exported_function_count += 1;
+            }
+        }
+
         self.current_export_names = export_names;
         self.next_export_index = 0;
         walk::walk_export_named_declaration(self, it);
+        self.current_export_names.clear();
+        self.next_export_index = 0;
+    }
+
+    fn visit_export_default_declaration(&mut self, it: &ExportDefaultDeclaration<'a>) {
+        // Check if the default export is a Convex function call expression
+        if let ExportDefaultDeclarationKind::CallExpression(_) = &it.declaration {
+            if Self::is_convex_function_call(it.declaration.to_expression()) {
+                self.current_export_names = vec!["default".to_string()];
+                self.next_export_index = 0;
+            }
+        }
+        walk::walk_export_default_declaration(self, it);
         self.current_export_names.clear();
         self.next_export_index = 0;
     }
@@ -431,10 +497,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         let mut started_exported_function = false;
 
         // Check if this is a Convex function definition: query({...}), mutation({...}), etc.
+        let mut is_direct_export = false;
         if let Some(kind) = Self::get_function_kind(&it.callee) {
-            if let Some(export_name) = self.next_export_name() {
+            let export_name = self.next_export_name();
+            is_direct_export = export_name.is_some();
+            let tracking_name = export_name.or_else(|| self.current_assignment_target.clone());
+
+            if let Some(name) = tracking_name {
                 let mut builder = FunctionBuilder {
-                    name: export_name.clone(),
+                    name: name.clone(),
                     kind: Some(kind.clone()),
                     span_line: line,
                     span_col: col,
@@ -446,8 +517,8 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     // Inspect config properties before walking
                     for prop in &obj.properties {
                         if let ObjectPropertyKind::ObjectProperty(prop) = prop {
-                            if let Some(name) = prop.key.static_name() {
-                                match name.as_ref() {
+                            if let Some(prop_name) = prop.key.static_name() {
+                                match prop_name.as_ref() {
                                     "args" => {
                                         builder.has_args_validator = true;
                                         if let Expression::ObjectExpression(args_obj) = &prop.value
@@ -542,11 +613,12 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         .push(super::CallLocation {
                             line,
                             col,
-                            detail: format!("{}() using old function syntax", export_name),
+                            detail: format!("{}() using old function syntax", name),
                         });
                 }
 
                 self.function_builder_stack.push(builder);
+                self.collect_variables.clear();
                 self.current_function_kind = Some(kind);
                 started_exported_function = true;
             }
@@ -565,7 +637,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     });
                     // Track variables assigned from ctx.db.*.collect() for collect-then-filter detection
                     if let Some(ref target) = self.current_assignment_target {
-                        self.collect_variables.push(target.clone());
+                        self.collect_variables.insert(target.clone());
                     }
                 }
             }
@@ -583,7 +655,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 // Detect .filter() on variables that hold collect() results
                 if let Expression::Identifier(ident) = &mem.object {
                     let var_name = ident.name.as_str();
-                    if self.collect_variables.iter().any(|v| v == var_name) {
+                    if self.collect_variables.contains(var_name) {
                         self.analysis.collect_variable_filters.push(CallLocation {
                             line,
                             col,
@@ -656,7 +728,6 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     chain: chain.clone(),
                     line,
                     col,
-                    in_loop: self.loop_depth > 0,
                     is_awaited: self.in_await,
                     is_returned: self.in_return,
                     assigned_to: self.current_assignment_target.clone(),
@@ -808,16 +879,24 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 prop_name,
                 "interval" | "hourly" | "daily" | "weekly" | "monthly" | "cron"
             ) {
-                // Check if any argument resolves to an api.* chain
-                for arg in &it.arguments {
-                    if let Some(expr) = arg.as_expression() {
-                        if let Some(chain) = Self::resolve_member_chain(expr) {
-                            if chain.starts_with("api.") {
-                                self.analysis.cron_api_refs.push(CallLocation {
-                                    line,
-                                    col,
-                                    detail: chain,
-                                });
+                // Only flag if the receiver looks like a cron scheduling object
+                let receiver_chain =
+                    Self::resolve_member_chain(&mem.object).unwrap_or_default();
+                if receiver_chain == "crons"
+                    || receiver_chain.contains("cron")
+                    || receiver_chain.contains("Cron")
+                {
+                    // Check if any argument resolves to an api.* chain
+                    for arg in &it.arguments {
+                        if let Some(expr) = arg.as_expression() {
+                            if let Some(chain) = Self::resolve_member_chain(expr) {
+                                if chain.starts_with("api.") {
+                                    self.analysis.cron_api_refs.push(CallLocation {
+                                        line,
+                                        col,
+                                        detail: chain,
+                                    });
+                                }
                             }
                         }
                     }
@@ -915,7 +994,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         if let Some(Expression::StringLiteral(s)) = first_arg.as_expression() {
                             let table_ref = s.value.as_str().to_string();
                             self.analysis.schema_id_fields.push(SchemaIdField {
-                                field_name: format!("v.id(\"{}\")", table_ref),
+                                field_name: self.current_object_property_name.clone().unwrap_or_default(),
                                 table_ref,
                                 line,
                                 col,
@@ -1036,7 +1115,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     hook_name: name.to_string(),
                     line,
                     col,
-                    in_render_body: self.function_builder_stack.is_empty(),
+                    in_render_body: false, // Disabled: heuristic too unreliable for static analysis
                 });
             }
         }
@@ -1045,8 +1124,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
 
         if started_exported_function {
             if let Some(builder) = self.function_builder_stack.pop() {
-                self.analysis.functions.push(builder.build());
-                self.analysis.exported_function_count += 1;
+                let func = builder.build();
+                if is_direct_export {
+                    // Direct export: export const foo = query({...}) or export default query({...})
+                    self.analysis.functions.push(func);
+                    self.analysis.exported_function_count += 1;
+                } else {
+                    // Deferred: const foo = query({...}) — might be exported later via export { foo }
+                    self.pending_functions.insert(func.name.clone(), func);
+                }
             }
             self.current_function_kind = prev_function_kind;
         }
@@ -1055,6 +1141,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         if is_validator_nesting {
             self.validator_nesting_depth -= 1;
         }
+    }
+
+    fn visit_object_property(&mut self, it: &ObjectProperty<'a>) {
+        let prev = self.current_object_property_name.take();
+        if let Some(name) = it.key.static_name() {
+            self.current_object_property_name = Some(name.to_string());
+        }
+        walk::walk_object_property(self, it);
+        self.current_object_property_name = prev;
     }
 
     fn visit_expression(&mut self, it: &Expression<'a>) {

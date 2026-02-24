@@ -672,3 +672,283 @@ export const list = query({
     assert!(!analysis.collect_variable_filters.is_empty(),
         "Should detect collect-then-filter pattern");
 }
+
+// --------------------------------------------------------------------------
+// 17. ChainExpression support (optional chaining)
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_optional_chaining_ctx_db_detected() {
+    let analysis = analyze_ts(
+        r#"
+import { mutation } from "convex/server";
+
+export const create = mutation({
+  handler: async (ctx) => {
+    await ctx?.db.insert("table", { name: "test" });
+  },
+});
+"#,
+    );
+    assert!(
+        analysis.ctx_calls.iter().any(|c| c.chain.contains("ctx") && c.chain.contains("db")),
+        "Should detect ctx?.db.insert as a ctx call, found: {:?}",
+        analysis.ctx_calls
+    );
+}
+
+#[test]
+fn test_optional_chaining_ctx_auth_detected() {
+    let analysis = analyze_ts(
+        r#"
+import { mutation } from "convex/server";
+
+export const doStuff = mutation({
+  handler: async (ctx) => {
+    const identity = await ctx.auth?.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+  },
+});
+"#,
+    );
+    let func = analysis.functions.iter().find(|f| f.name == "doStuff").unwrap();
+    assert!(
+        func.has_auth_check,
+        "Should detect ctx.auth?.getUserIdentity() as an auth check"
+    );
+}
+
+// --------------------------------------------------------------------------
+// 18. Schema ID field_name stores property name, not validator string
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_schema_id_field_name_is_property_name() {
+    let analysis = analyze_ts(
+        r#"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  posts: defineTable({
+    authorId: v.id("users"),
+    categoryId: v.id("categories"),
+  }),
+});
+"#,
+    );
+    assert!(
+        analysis.schema_id_fields.iter().any(|f| f.field_name == "authorId" && f.table_ref == "users"),
+        "field_name should be 'authorId', not 'v.id(\"users\")', found: {:?}",
+        analysis.schema_id_fields
+    );
+    assert!(
+        analysis.schema_id_fields.iter().any(|f| f.field_name == "categoryId" && f.table_ref == "categories"),
+        "field_name should be 'categoryId', not 'v.id(\"categories\")', found: {:?}",
+        analysis.schema_id_fields
+    );
+}
+
+// --------------------------------------------------------------------------
+// 19. Cron detection only fires for cron-related receivers
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_cron_non_cron_receiver_not_flagged() {
+    let analysis = analyze_ts(
+        r#"
+const scheduler = { interval: (name: string, opts: any, fn: any) => {} };
+scheduler.interval("cleanup", { hours: 1 }, api.tasks.cleanup);
+"#,
+    );
+    assert!(
+        analysis.cron_api_refs.is_empty(),
+        "Should NOT flag .interval() on a non-cron receiver, found: {:?}",
+        analysis.cron_api_refs
+    );
+}
+
+// --------------------------------------------------------------------------
+// 20. Export default detection: export default query({...})
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_export_default_query_detected() {
+    let analysis = analyze_ts(
+        r#"
+import { query } from "convex/server";
+import { v } from "convex/values";
+
+export default query({
+  args: { id: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+"#,
+    );
+    assert_eq!(
+        analysis.functions.len(),
+        1,
+        "Should detect 1 function from export default query, found: {:?}",
+        analysis.functions
+    );
+    assert_eq!(analysis.functions[0].name, "default");
+    assert!(
+        analysis.functions[0].has_args_validator,
+        "Should detect args validator in export default query"
+    );
+    assert_eq!(analysis.exported_function_count, 1);
+}
+
+#[test]
+fn test_export_default_mutation_detected() {
+    let analysis = analyze_ts(
+        r#"
+import { mutation } from "convex/server";
+
+export default mutation({
+  handler: async (ctx) => {
+    await ctx.db.insert("messages", { body: "hello" });
+  },
+});
+"#,
+    );
+    assert_eq!(
+        analysis.functions.len(),
+        1,
+        "Should detect 1 function from export default mutation, found: {:?}",
+        analysis.functions
+    );
+    assert_eq!(analysis.functions[0].name, "default");
+    assert_eq!(analysis.exported_function_count, 1);
+}
+
+// --------------------------------------------------------------------------
+// 21. Named re-export detection: const foo = query({...}); export { foo };
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_export_braces_detected() {
+    let analysis = analyze_ts(
+        r#"
+import { mutation } from "convex/server";
+import { v } from "convex/values";
+
+const create = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("messages", { body: args.body });
+  },
+});
+
+export { create };
+"#,
+    );
+    assert_eq!(
+        analysis.functions.len(),
+        1,
+        "Should detect 1 function from export {{ create }}, found: {:?}",
+        analysis.functions
+    );
+    assert_eq!(analysis.functions[0].name, "create");
+    assert!(
+        analysis.functions[0].has_args_validator,
+        "Should detect args validator in re-exported function"
+    );
+    assert_eq!(analysis.exported_function_count, 1);
+}
+
+#[test]
+fn test_export_braces_with_alias_detected() {
+    let analysis = analyze_ts(
+        r#"
+import { query } from "convex/server";
+import { v } from "convex/values";
+
+const myQuery = query({
+  args: { name: v.string() },
+  handler: async (ctx, args) => {
+    return args.name;
+  },
+});
+
+export { myQuery as getByName };
+"#,
+    );
+    assert_eq!(
+        analysis.functions.len(),
+        1,
+        "Should detect 1 function from export {{ myQuery as getByName }}, found: {:?}",
+        analysis.functions
+    );
+    assert_eq!(
+        analysis.functions[0].name, "getByName",
+        "Should use the exported alias name, not the local name"
+    );
+    assert_eq!(analysis.exported_function_count, 1);
+}
+
+// --------------------------------------------------------------------------
+// 22. Non-exported Convex function is NOT in analysis.functions
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_non_exported_convex_function_not_in_functions() {
+    let analysis = analyze_ts(
+        r#"
+import { query } from "convex/server";
+
+const helper = query({
+  args: {},
+  handler: async (ctx) => {},
+});
+"#,
+    );
+    assert_eq!(
+        analysis.functions.len(),
+        0,
+        "Non-exported Convex function should NOT appear in analysis.functions, found: {:?}",
+        analysis.functions
+    );
+    assert_eq!(analysis.exported_function_count, 0);
+}
+
+// --------------------------------------------------------------------------
+// 23. Mixed: export const + export { ... } in same file
+// --------------------------------------------------------------------------
+
+#[test]
+fn test_mixed_export_styles() {
+    let analysis = analyze_ts(
+        r#"
+import { query, mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("messages").collect();
+  },
+});
+
+const create = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("messages", { body: args.body });
+  },
+});
+
+export { create };
+"#,
+    );
+    assert_eq!(
+        analysis.functions.len(),
+        2,
+        "Should detect 2 functions (export const + export {{}}), found: {:?}",
+        analysis.functions
+    );
+    assert!(analysis.functions.iter().any(|f| f.name == "list"));
+    assert!(analysis.functions.iter().any(|f| f.name == "create"));
+    assert_eq!(analysis.exported_function_count, 2);
+}

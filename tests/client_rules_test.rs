@@ -25,7 +25,9 @@ fn analyze_ts(content: &str) -> convex_doctor::rules::FileAnalysis {
 // =========================================================================
 
 #[test]
-fn mutation_in_render_detected() {
+fn mutation_in_render_not_flagged_with_disabled_heuristic() {
+    // in_render_body heuristic is disabled (too unreliable for static analysis),
+    // so MutationInRender should not fire.
     let analysis = analyze_tsx(
         r#"
 import { useMutation } from "convex/react";
@@ -39,11 +41,10 @@ export default function BadComponent() {
     );
     let diags = MutationInRender.check(&analysis);
     assert!(
-        !diags.is_empty(),
-        "Should detect useMutation in render body, found: {:?}",
+        diags.is_empty(),
+        "in_render_body heuristic is disabled; rule should not fire, got: {:?}",
         diags
     );
-    assert!(diags[0].message.contains("useMutation"));
 }
 
 #[test]
@@ -309,16 +310,22 @@ export default function Multi() {
 // =========================================================================
 
 #[test]
-fn mutation_in_render_is_error_severity() {
-    let analysis = analyze_tsx(
-        r#"
-import { useMutation } from "convex/react";
-export default function C() {
-  const m = useMutation(api.tasks.create);
-  return <div />;
-}
-"#,
-    );
+fn mutation_in_render_severity_is_error_when_triggered() {
+    // in_render_body heuristic is disabled, so this test just verifies the
+    // rule struct has the right severity constant wired up.
+    // We check severity via a synthetic FileAnalysis with in_render_body = true.
+    let mut analysis = convex_doctor::rules::FileAnalysis {
+        file_path: "test.tsx".to_string(),
+        ..Default::default()
+    };
+    analysis
+        .convex_hook_calls
+        .push(convex_doctor::rules::ConvexHookCall {
+            hook_name: "useMutation".to_string(),
+            line: 1,
+            col: 1,
+            in_render_body: true,
+        });
     let diags = MutationInRender.check(&analysis);
     assert!(!diags.is_empty());
     assert_eq!(diags[0].severity, convex_doctor::diagnostic::Severity::Error);

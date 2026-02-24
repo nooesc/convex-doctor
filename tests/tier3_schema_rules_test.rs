@@ -216,7 +216,31 @@ fn test_optional_fields_not_triggered_for_non_schema_file() {
 // ── MissingIndexForQuery (project-level) ────────────────────────────────────
 
 #[test]
-fn test_missing_index_for_query_no_indexes() {
+fn test_missing_index_for_query_no_indexes_with_filter_fields() {
+    use convex_doctor::rules::FilterField;
+    let rule = MissingIndexForQuery;
+    let ctx = ProjectContext {
+        has_schema: true,
+        all_index_definitions: vec![],
+        all_filter_field_names: vec![FilterField {
+            field_name: "status".to_string(),
+            line: 5,
+            col: 1,
+        }],
+        ..Default::default()
+    };
+    let diagnostics = rule.check_project(&ctx);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Should warn when schema exists but no indexes defined and filter fields exist"
+    );
+    assert_eq!(diagnostics[0].severity, Severity::Warning);
+    assert!(diagnostics[0].message.contains("no database indexes"));
+}
+
+#[test]
+fn test_missing_index_for_query_no_indexes_no_filter_fields() {
     let rule = MissingIndexForQuery;
     let ctx = ProjectContext {
         has_schema: true,
@@ -224,13 +248,10 @@ fn test_missing_index_for_query_no_indexes() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-    assert_eq!(
-        diagnostics.len(),
-        1,
-        "Should warn when schema exists but no indexes defined"
+    assert!(
+        diagnostics.is_empty(),
+        "Should not warn when no indexes and no filter fields"
     );
-    assert_eq!(diagnostics[0].severity, Severity::Warning);
-    assert!(diagnostics[0].message.contains("no database indexes"));
 }
 
 #[test]
@@ -266,4 +287,39 @@ fn test_missing_index_for_query_no_schema() {
         diagnostics.is_empty(),
         "Should not warn when there is no schema at all"
     );
+}
+
+#[test]
+fn test_missing_index_for_query_with_filter_fields() {
+    use convex_doctor::rules::{FilterField, IndexDef};
+    let rule = MissingIndexForQuery;
+    let ctx = ProjectContext {
+        has_schema: true,
+        all_index_definitions: vec![IndexDef {
+            table: "table@0".to_string(),
+            name: "by_status".to_string(),
+            fields: vec!["status".to_string()],
+            line: 1,
+        }],
+        all_filter_field_names: vec![
+            FilterField {
+                field_name: "status".to_string(),
+                line: 10,
+                col: 1,
+            },
+            FilterField {
+                field_name: "userId".to_string(),
+                line: 20,
+                col: 1,
+            },
+        ],
+        ..Default::default()
+    };
+    let diagnostics = rule.check_project(&ctx);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Should warn about userId but not status"
+    );
+    assert!(diagnostics[0].message.contains("userId"));
 }

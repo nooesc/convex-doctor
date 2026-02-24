@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, ProjectContext, Rule};
@@ -276,7 +276,12 @@ impl Rule for MissingIndexForQuery {
         vec![]
     }
     fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
-        if ctx.has_schema && ctx.all_index_definitions.is_empty() {
+        if !ctx.has_schema {
+            return vec![];
+        }
+
+        // If no indexes at all but schema exists, that's worth a warning
+        if ctx.all_index_definitions.is_empty() && !ctx.all_filter_field_names.is_empty() {
             return vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -290,6 +295,30 @@ impl Rule for MissingIndexForQuery {
             }];
         }
 
-        vec![]
+        // Collect all indexed first-fields
+        let indexed_fields: HashSet<&str> = ctx
+            .all_index_definitions
+            .iter()
+            .filter_map(|idx| idx.fields.first().map(|f| f.as_str()))
+            .collect();
+
+        // Warn for filter fields not covered by any index
+        ctx.all_filter_field_names
+            .iter()
+            .filter(|ff| !indexed_fields.contains(ff.field_name.as_str()))
+            .map(|ff| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "Query filters on field `{}` but no index starts with that field",
+                    ff.field_name
+                ),
+                help: "Add an index starting with this field to avoid full table scans.".to_string(),
+                file: "convex/schema.ts".to_string(),
+                line: ff.line,
+                column: ff.col,
+            })
+            .collect()
     }
 }

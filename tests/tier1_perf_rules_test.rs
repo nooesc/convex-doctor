@@ -436,3 +436,86 @@ fn test_all_rules_are_performance_category() {
     assert_eq!(LargeDocumentWrite.category(), Category::Performance);
     assert_eq!(NoPaginationForList.category(), Category::Performance);
 }
+
+// ---------------------------------------------------------------------------
+// End-to-end: CollectThenFilter through the visitor
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_collect_then_filter_end_to_end() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("collect_filter.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { query } from "convex/server";
+
+export const bad = query({
+  args: {},
+  handler: async (ctx) => {
+    const items = await ctx.db.query("tasks").collect();
+    return items.filter(i => i.done);
+  },
+});
+"#,
+    )
+    .unwrap();
+    let analysis = analyze_file(&path).unwrap();
+    let rule = CollectThenFilter;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "Should detect collect-then-filter pattern end-to-end"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Boundary: LargeDocumentWrite (20 props = no fire, 21 = fire)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_large_document_write_boundary() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("boundary.ts");
+    // Generate exactly 20 properties -- should NOT fire
+    let props_20: String = (1..=20)
+        .map(|i| format!("f{}: \"v\"", i))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let props_21: String = (1..=21)
+        .map(|i| format!("f{}: \"v\"", i))
+        .collect::<Vec<_>>()
+        .join(", ");
+    std::fs::write(
+        &path,
+        format!(
+            r#"
+import {{ mutation }} from "convex/server";
+
+export const ok = mutation({{
+  args: {{}},
+  handler: async (ctx) => {{
+    await ctx.db.insert("t", {{ {} }});
+  }},
+}});
+
+export const bad = mutation({{
+  args: {{}},
+  handler: async (ctx) => {{
+    await ctx.db.insert("t", {{ {} }});
+  }},
+}});
+"#,
+            props_20, props_21
+        ),
+    )
+    .unwrap();
+    let analysis = analyze_file(&path).unwrap();
+    let rule = LargeDocumentWrite;
+    let diagnostics = rule.check(&analysis);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Should fire only for >20 properties, not >=20"
+    );
+}

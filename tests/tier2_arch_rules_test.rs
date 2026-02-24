@@ -12,7 +12,7 @@ fn action_without_scheduling_flags_run_action_in_mutation() {
             chain: "ctx.runAction".to_string(),
             line: 10,
             col: 5,
-            in_loop: false,
+
             is_awaited: true,
             is_returned: false,
             assigned_to: None,
@@ -37,7 +37,7 @@ fn action_without_scheduling_flags_run_action_in_internal_mutation() {
             chain: "ctx.runAction".to_string(),
             line: 10,
             col: 5,
-            in_loop: false,
+
             is_awaited: true,
             is_returned: false,
             assigned_to: None,
@@ -59,7 +59,7 @@ fn action_without_scheduling_ignores_run_action_in_action() {
             chain: "ctx.runAction".to_string(),
             line: 10,
             col: 5,
-            in_loop: false,
+
             is_awaited: true,
             is_returned: false,
             assigned_to: None,
@@ -81,7 +81,7 @@ fn action_without_scheduling_ignores_run_query_in_mutation() {
             chain: "ctx.runQuery".to_string(),
             line: 10,
             col: 5,
-            in_loop: false,
+
             is_awaited: true,
             is_returned: false,
             assigned_to: None,
@@ -342,7 +342,6 @@ fn make_action_ctx_call(chain: &str, line: u32) -> CtxCall {
         chain: chain.to_string(),
         line,
         col: 5,
-        in_loop: false,
         is_awaited: true,
         is_returned: false,
         assigned_to: None,
@@ -414,7 +413,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 5,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -425,7 +424,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 10,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -436,7 +435,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 15,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -447,7 +446,7 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 chain: "ctx.runQuery".to_string(),
                 line: 20,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -471,7 +470,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runQuery".to_string(),
                 line: 5,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -482,7 +481,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runMutation".to_string(),
                 line: 10,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -493,7 +492,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runQuery".to_string(),
                 line: 15,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,
@@ -504,7 +503,7 @@ fn deep_function_chain_counts_internal_actions_too() {
                 chain: "ctx.runMutation".to_string(),
                 line: 20,
                 col: 5,
-                in_loop: false,
+    
                 is_awaited: true,
                 is_returned: false,
                 assigned_to: None,

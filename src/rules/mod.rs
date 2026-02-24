@@ -138,7 +138,6 @@ pub struct CtxCall {
     pub chain: String,
     pub line: u32,
     pub col: u32,
-    pub in_loop: bool,
     pub is_awaited: bool,
     pub is_returned: bool,
     pub assigned_to: Option<String>,
@@ -221,6 +220,7 @@ pub struct ProjectContext {
     pub generated_files_modified: bool,
     pub all_index_definitions: Vec<IndexDef>,
     pub all_schema_id_fields: Vec<SchemaIdField>,
+    pub all_filter_field_names: Vec<FilterField>,
 }
 
 pub trait Rule: Send + Sync {
