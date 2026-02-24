@@ -19,7 +19,7 @@ export const getMessages = query({
     )
     .unwrap();
 
-    let result = convex_doctor::engine::run(dir.path(), false).unwrap();
+    let result = convex_doctor::engine::run(dir.path(), false, None).unwrap();
     assert!(result.score.value < 100);
     assert!(!result.diagnostics.is_empty());
     assert_eq!(result.files_scanned, 1);
@@ -28,7 +28,7 @@ export const getMessages = query({
 #[test]
 fn test_engine_no_convex_dir() {
     let dir = TempDir::new().unwrap();
-    let result = convex_doctor::engine::run(dir.path(), false);
+    let result = convex_doctor::engine::run(dir.path(), false, None);
     assert!(result.is_err());
 }
 

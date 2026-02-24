@@ -37,7 +37,7 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
-    let result = match convex_doctor::engine::run(&cli.path, cli.verbose) {
+    let result = match convex_doctor::engine::run(&cli.path, cli.verbose, cli.diff.as_deref()) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error: {e}");
@@ -71,8 +71,7 @@ fn main() {
         print!("{output}");
     }
 
-    let config = convex_doctor::config::Config::load(&cli.path).unwrap_or_default();
-    if config.ci.fail_below > 0 && result.score.value < config.ci.fail_below {
+    if result.fail_below > 0 && result.score.value < result.fail_below {
         process::exit(1);
     }
 }

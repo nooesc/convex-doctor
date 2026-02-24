@@ -3,7 +3,7 @@ use std::path::Path;
 #[test]
 fn test_e2e_sample_project() {
     let result =
-        convex_doctor::engine::run(Path::new("tests/fixtures/sample_project"), false).unwrap();
+        convex_doctor::engine::run(Path::new("tests/fixtures/sample_project"), false, None).unwrap();
 
     // Score should be reasonable but not perfect (missing return validators, etc.)
     assert!(result.score.value > 0);
@@ -23,7 +23,7 @@ fn test_e2e_json_output() {
     use convex_doctor::reporter::Reporter;
 
     let result =
-        convex_doctor::engine::run(Path::new("tests/fixtures/sample_project"), false).unwrap();
+        convex_doctor::engine::run(Path::new("tests/fixtures/sample_project"), false, None).unwrap();
 
     let reporter = JsonReporter;
     let json_str = reporter.format(&result.diagnostics, &result.score, "sample_project", false);

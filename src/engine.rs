@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
@@ -14,13 +15,36 @@ pub struct EngineResult {
     pub score: ScoreResult,
     pub project_name: String,
     pub files_scanned: usize,
+    pub fail_below: u32,
 }
 
-pub fn run(path: &Path, _verbose: bool) -> Result<EngineResult, String> {
+pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<EngineResult, String> {
     let project = ProjectInfo::detect(path)?;
     let config = Config::load(path)?;
     let registry = RuleRegistry::new();
     let files = project.discover_files(&config);
+
+    // If a diff base is provided, filter to only changed files
+    let files = if let Some(base) = diff_base {
+        let changed: HashSet<_> = get_changed_files(path, base)
+            .into_iter()
+            .map(|p| p.canonicalize().unwrap_or(p))
+            .collect();
+        if changed.is_empty() {
+            files // If git diff fails or no changes, scan all
+        } else {
+            files
+                .into_iter()
+                .filter(|f| {
+                    let canon = f.canonicalize().unwrap_or_else(|_| f.clone());
+                    changed.contains(&canon)
+                })
+                .collect()
+        }
+    } else {
+        files
+    };
+
     let files_scanned = files.len();
 
     let all_diagnostics: Vec<Diagnostic> = files
@@ -49,6 +73,7 @@ pub fn run(path: &Path, _verbose: bool) -> Result<EngineResult, String> {
         score,
         project_name,
         files_scanned,
+        fail_below: config.ci.fail_below,
     })
 }
 

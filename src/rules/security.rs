@@ -125,7 +125,7 @@ impl Rule for InternalApiMisuse {
             })
             .map(|call| Diagnostic {
                 rule: self.id().to_string(),
-                severity: Severity::Warning,
+                severity: Severity::Error,
                 category: self.category(),
                 message: format!(
                     "`{}` is called with public API reference `{}`",
