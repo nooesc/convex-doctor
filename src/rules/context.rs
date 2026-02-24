@@ -41,6 +41,7 @@ struct FunctionBuilder {
     name: String,
     kind: Option<FunctionKind>,
     has_args_validator: bool,
+    arg_names: Vec<String>,
     has_return_validator: bool,
     has_auth_check: bool,
     handler_line_count: u32,
@@ -54,6 +55,7 @@ impl FunctionBuilder {
             name: self.name,
             kind: self.kind.unwrap_or(FunctionKind::Query),
             has_args_validator: self.has_args_validator,
+            arg_names: self.arg_names,
             has_return_validator: self.has_return_validator,
             has_auth_check: self.has_auth_check,
             handler_line_count: self.handler_line_count,
@@ -69,9 +71,12 @@ struct ConvexVisitor<'a> {
     analysis: FileAnalysis,
     loop_depth: u32,
     in_await: bool,
-    current_export_name: Option<String>,
+    in_return: bool,
+    current_assignment_target: Option<String>,
+    current_export_names: Vec<String>,
+    next_export_index: usize,
     current_function_kind: Option<FunctionKind>,
-    building_function: Option<FunctionBuilder>,
+    function_builder_stack: Vec<FunctionBuilder>,
     validator_nesting_depth: u32,
     max_validator_nesting_depth: u32,
 }
@@ -86,9 +91,12 @@ impl<'a> ConvexVisitor<'a> {
             },
             loop_depth: 0,
             in_await: false,
-            current_export_name: None,
+            in_return: false,
+            current_assignment_target: None,
+            current_export_names: vec![],
+            next_export_index: 0,
             current_function_kind: None,
-            building_function: None,
+            function_builder_stack: vec![],
             validator_nesting_depth: 0,
             max_validator_nesting_depth: 0,
         }
@@ -97,6 +105,21 @@ impl<'a> ConvexVisitor<'a> {
     fn into_analysis(mut self) -> FileAnalysis {
         self.analysis.schema_nesting_depth = self.max_validator_nesting_depth;
         self.analysis
+    }
+
+    fn next_export_name(&mut self) -> Option<String> {
+        let name = self
+            .current_export_names
+            .get(self.next_export_index)
+            .cloned();
+        if name.is_some() {
+            self.next_export_index += 1;
+        }
+        name
+    }
+
+    fn current_builder_mut(&mut self) -> Option<&mut FunctionBuilder> {
+        self.function_builder_stack.last_mut()
     }
 
     /// Compute line and column (1-based) from a byte offset in the source text.
@@ -228,33 +251,32 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
     }
 
     fn visit_export_named_declaration(&mut self, it: &ExportNamedDeclaration<'a>) {
-        // Try to extract the exported name from `export const foo = ...`
+        let mut export_names = vec![];
+
+        // Extract exported names from `export const foo = ..., bar = ...`
         if let Some(Declaration::VariableDeclaration(var_decl)) = &it.declaration {
             for declarator in &var_decl.declarations {
                 if let BindingPattern::BindingIdentifier(ident) = &declarator.id {
-                    let name = ident.name.as_str().to_string();
-                    self.current_export_name = Some(name);
+                    export_names.push(ident.name.as_str().to_string());
                 }
             }
         }
 
+        self.current_export_names = export_names;
+        self.next_export_index = 0;
         walk::walk_export_named_declaration(self, it);
-
-        // After walking, if we built a function, finalize it
-        if let Some(builder) = self.building_function.take() {
-            self.analysis.functions.push(builder.build());
-            self.analysis.exported_function_count += 1;
-        }
-        self.current_export_name = None;
-        self.current_function_kind = None;
+        self.current_export_names.clear();
+        self.next_export_index = 0;
     }
 
     fn visit_call_expression(&mut self, it: &CallExpression<'a>) {
         let (line, col) = self.line_col(it.span.start);
+        let prev_function_kind = self.current_function_kind.clone();
+        let mut started_exported_function = false;
 
         // Check if this is a Convex function definition: query({...}), mutation({...}), etc.
         if let Some(kind) = Self::get_function_kind(&it.callee) {
-            if let Some(export_name) = &self.current_export_name {
+            if let Some(export_name) = self.next_export_name() {
                 let mut builder = FunctionBuilder {
                     name: export_name.clone(),
                     kind: Some(kind.clone()),
@@ -270,7 +292,23 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         if let ObjectPropertyKind::ObjectProperty(prop) = prop {
                             if let Some(name) = prop.key.static_name() {
                                 match name.as_ref() {
-                                    "args" => builder.has_args_validator = true,
+                                    "args" => {
+                                        builder.has_args_validator = true;
+                                        if let Expression::ObjectExpression(args_obj) = &prop.value
+                                        {
+                                            for arg_prop in &args_obj.properties {
+                                                if let ObjectPropertyKind::ObjectProperty(arg) =
+                                                    arg_prop
+                                                {
+                                                    if let Some(arg_name) = arg.key.static_name() {
+                                                        builder
+                                                            .arg_names
+                                                            .push(arg_name.to_string());
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                     "returns" => builder.has_return_validator = true,
                                     "handler" => {
                                         let handler_start_line =
@@ -297,8 +335,9 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         });
                 }
 
-                self.building_function = Some(builder);
+                self.function_builder_stack.push(builder);
                 self.current_function_kind = Some(kind);
+                started_exported_function = true;
             }
         }
 
@@ -392,6 +431,8 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     col,
                     in_loop: self.loop_depth > 0,
                     is_awaited: self.in_await,
+                    is_returned: self.in_return,
+                    assigned_to: self.current_assignment_target.clone(),
                     enclosing_function_kind: self.current_function_kind.clone(),
                     first_arg_chain,
                 };
@@ -514,7 +555,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             if mem.property.name.as_str() == "first" {
                 let full_chain = Self::resolve_member_chain(&it.callee).unwrap_or_default();
-                if full_chain.contains("ctx.db") {
+                if full_chain.contains("ctx.db") && full_chain.contains(".withIndex.") {
                     self.analysis.first_calls.push(CallLocation {
                         line,
                         col,
@@ -526,12 +567,20 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
 
         // Check for ctx.auth in the callee chain (for auth check detection)
         if Self::contains_ctx_auth(&it.callee) {
-            if let Some(ref mut builder) = self.building_function {
+            if let Some(builder) = self.current_builder_mut() {
                 builder.has_auth_check = true;
             }
         }
 
         walk::walk_call_expression(self, it);
+
+        if started_exported_function {
+            if let Some(builder) = self.function_builder_stack.pop() {
+                self.analysis.functions.push(builder.build());
+                self.analysis.exported_function_count += 1;
+            }
+            self.current_function_kind = prev_function_kind;
+        }
 
         // Restore validator nesting depth after walking children
         if is_validator_nesting {
@@ -545,7 +594,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         if let Expression::StaticMemberExpression(mem) = it {
             if let Expression::Identifier(ident) = &mem.object {
                 if ident.name.as_str() == "ctx" && mem.property.name.as_str() == "auth" {
-                    if let Some(ref mut builder) = self.building_function {
+                    if let Some(builder) = self.current_builder_mut() {
                         builder.has_auth_check = true;
                     }
                 }
@@ -556,10 +605,33 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
     }
 
     fn visit_await_expression(&mut self, it: &AwaitExpression<'a>) {
+        if let Expression::Identifier(ident) = &it.argument {
+            let awaited = ident.name.as_str().to_string();
+            if !self.analysis.awaited_identifiers.contains(&awaited) {
+                self.analysis.awaited_identifiers.push(awaited);
+            }
+        }
+
         let prev = self.in_await;
         self.in_await = true;
         walk::walk_await_expression(self, it);
         self.in_await = prev;
+    }
+
+    fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
+        let prev_assignment = self.current_assignment_target.clone();
+        if let BindingPattern::BindingIdentifier(ident) = &it.id {
+            self.current_assignment_target = Some(ident.name.as_str().to_string());
+        }
+        walk::walk_variable_declarator(self, it);
+        self.current_assignment_target = prev_assignment;
+    }
+
+    fn visit_return_statement(&mut self, it: &ReturnStatement<'a>) {
+        let prev_return = self.in_return;
+        self.in_return = true;
+        walk::walk_return_statement(self, it);
+        self.in_return = prev_return;
     }
 
     fn visit_for_statement(&mut self, it: &ForStatement<'a>) {

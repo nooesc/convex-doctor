@@ -27,6 +27,7 @@ pub struct FileAnalysis {
     pub schema_array_id_fields: Vec<CallLocation>,
     pub index_definitions: Vec<IndexDef>,
     pub first_calls: Vec<CallLocation>,
+    pub awaited_identifiers: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +35,7 @@ pub struct ConvexFunction {
     pub name: String,
     pub kind: FunctionKind,
     pub has_args_validator: bool,
+    pub arg_names: Vec<String>,
     pub has_return_validator: bool,
     pub has_auth_check: bool,
     pub handler_line_count: u32,
@@ -120,6 +122,8 @@ pub struct CtxCall {
     pub col: u32,
     pub in_loop: bool,
     pub is_awaited: bool,
+    pub is_returned: bool,
+    pub assigned_to: Option<String>,
     pub enclosing_function_kind: Option<FunctionKind>,
     pub first_arg_chain: Option<String>,
 }

@@ -2,6 +2,7 @@ use convex_doctor::rules::context::analyze_file;
 use convex_doctor::rules::correctness::*;
 use convex_doctor::rules::Rule;
 use std::path::Path;
+use tempfile::TempDir;
 
 #[test]
 fn test_unwaited_promise() {
@@ -45,5 +46,64 @@ fn test_old_function_syntax() {
     assert!(
         !analysis.old_syntax_functions.is_empty(),
         "Should detect old function syntax"
+    );
+}
+
+#[test]
+fn test_unwaited_promise_not_flagged_when_awaited_via_variable() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("deferred_await.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const create = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    const pending = ctx.db.insert("messages", { body: args.body });
+    return await pending;
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = UnwaitedPromise;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "Should not flag promise assigned then awaited later"
+    );
+}
+
+#[test]
+fn test_unwaited_promise_not_flagged_when_returned() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("returned_promise.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const create = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    return ctx.db.insert("messages", { body: args.body });
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = UnwaitedPromise;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "Returning a promise from async handler should not be flagged"
     );
 }

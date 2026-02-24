@@ -90,3 +90,12 @@ fn test_handler_line_count() {
         );
     }
 }
+
+#[test]
+fn test_multiple_exported_declarators_are_tracked() {
+    let analysis = analyze_file(Path::new("tests/fixtures/multi_export_declarators.ts")).unwrap();
+    let names: Vec<_> = analysis.functions.iter().map(|f| f.name.as_str()).collect();
+    assert_eq!(analysis.functions.len(), 2);
+    assert!(names.contains(&"foo"));
+    assert!(names.contains(&"bar"));
+}

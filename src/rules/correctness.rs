@@ -27,6 +27,11 @@ impl Rule for UnwaitedPromise {
             .iter()
             .filter(|c| {
                 !c.is_awaited
+                    && !c.is_returned
+                    && !c
+                        .assigned_to
+                        .as_ref()
+                        .is_some_and(|name| analysis.awaited_identifiers.iter().any(|a| a == name))
                     && AWAITABLE_CTX_PREFIXES
                         .iter()
                         .any(|prefix| c.chain.starts_with(prefix))
@@ -130,8 +135,6 @@ impl Rule for DeprecatedApi {
 }
 
 /// Stub: detect imports from the wrong Convex runtime.
-/// TODO: Implement cross-file analysis to detect when a "use node" file imports
-/// from a non-"use node" file or vice versa.
 pub struct WrongRuntimeImport;
 impl Rule for WrongRuntimeImport {
     fn id(&self) -> &'static str {
@@ -140,16 +143,51 @@ impl Rule for WrongRuntimeImport {
     fn category(&self) -> Category {
         Category::Correctness
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        // Stub: requires cross-file import graph analysis.
-        // Will be implemented in a future version.
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        const NODE_BUILTINS: &[&str] = &["fs", "path", "crypto", "child_process", "os", "stream"];
+
+        analysis
+            .imports
+            .iter()
+            .filter_map(|import| {
+                let source = import.source.as_str();
+
+                if !analysis.has_use_node
+                    && (source == "convex/node"
+                        || source.starts_with("node:")
+                        || NODE_BUILTINS.contains(&source))
+                {
+                    Some(Diagnostic {
+                        rule: self.id().to_string(),
+                        severity: Severity::Warning,
+                        category: self.category(),
+                        message: format!("Import `{source}` requires Node runtime"),
+                        help: "Add `\"use node\";` at the top of this file or replace Node-only imports with Convex runtime-compatible APIs.".to_string(),
+                        file: analysis.file_path.clone(),
+                        line: import.line,
+                        column: 1,
+                    })
+                } else if analysis.has_use_node
+                    && (source == "convex/browser" || source == "convex/react")
+                {
+                    Some(Diagnostic {
+                        rule: self.id().to_string(),
+                        severity: Severity::Warning,
+                        category: self.category(),
+                        message: format!("Node runtime file imports browser runtime package `{source}`"),
+                        help: "Avoid browser/runtime client imports in server files. Use server-side Convex modules instead.".to_string(),
+                        file: analysis.file_path.clone(),
+                        line: import.line,
+                        column: 1,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
-/// Stub: detect when a function reference is passed directly instead of using api.* reference.
-/// TODO: Implement detection of patterns like `ctx.runQuery(getMessages)` instead of
-/// `ctx.runQuery(api.messages.getMessages)`.
 pub struct DirectFunctionRef;
 impl Rule for DirectFunctionRef {
     fn id(&self) -> &'static str {
@@ -158,10 +196,35 @@ impl Rule for DirectFunctionRef {
     fn category(&self) -> Category {
         Category::Correctness
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        // Stub: requires type analysis to distinguish function references from api.* references.
-        // Will be implemented in a future version.
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .ctx_calls
+            .iter()
+            .filter_map(|call| {
+                if !(call.chain.starts_with("ctx.runQuery")
+                    || call.chain.starts_with("ctx.runMutation")
+                    || call.chain.starts_with("ctx.runAction"))
+                {
+                    return None;
+                }
+
+                let arg = call.first_arg_chain.as_deref()?;
+                if arg.starts_with("api.") || arg.starts_with("internal.") {
+                    return None;
+                }
+
+                Some(Diagnostic {
+                    rule: self.id().to_string(),
+                    severity: Severity::Warning,
+                    category: self.category(),
+                    message: format!("`{}` called with direct function reference `{arg}`", call.chain),
+                    help: "Use generated API references like `api.module.fn` or `internal.module.fn` instead of passing direct function identifiers.".to_string(),
+                    file: analysis.file_path.clone(),
+                    line: call.line,
+                    column: call.col,
+                })
+            })
+            .collect()
     }
 }
 
