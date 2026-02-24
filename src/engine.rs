@@ -214,7 +214,7 @@ fn get_git_paths(root: &Path, args: &[&str]) -> Result<Vec<String>, String> {
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
-        .map(std::borrow::ToString::to_string)
+        .map(ToString::to_string)
         .collect())
 }
 
