@@ -7,7 +7,7 @@ use oxc_parser::{ParseOptions, Parser};
 use oxc_span::SourceType;
 
 use super::{
-    CallLocation, ConvexFunction, CtxCall, FileAnalysis, FunctionKind, ImportInfo,
+    CallLocation, ConvexFunction, CtxCall, DeprecatedCall, FileAnalysis, FunctionKind, ImportInfo,
 };
 
 /// Analyze a TypeScript/JavaScript file for Convex-specific patterns.
@@ -286,10 +286,38 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
 
+        // Detect deprecated API calls (e.g., v.bigint(), v.bytes(), v.any())
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if let Expression::Identifier(ident) = &mem.object {
+                if ident.name.as_str() == "v" {
+                    let prop = mem.property.name.as_str();
+                    let deprecated = match prop {
+                        "bigint" => Some(("v.bigint()", "Use v.int64() instead")),
+                        "bytes" => Some(("v.bytes()", "Use v.string() with base64 encoding instead")),
+                        "any" => Some(("v.any()", "Use a specific validator type for better type safety")),
+                        _ => None,
+                    };
+                    if let Some((name, replacement)) = deprecated {
+                        self.analysis.deprecated_calls.push(DeprecatedCall {
+                            name: name.to_string(),
+                            replacement: replacement.to_string(),
+                            line,
+                            col,
+                        });
+                    }
+                }
+            }
+        }
+
         // Detect ctx.* calls and auth checks
         if Self::is_ctx_call(&it.callee) {
             if let Some(chain) = Self::resolve_member_chain(&it.callee) {
                 // Track ctx call
+                // Extract first_arg_chain from the first argument
+                let first_arg_chain = it.arguments.first().and_then(|arg| {
+                    arg.as_expression().and_then(|expr| Self::resolve_member_chain(expr))
+                });
+
                 let ctx_call = CtxCall {
                     chain: chain.clone(),
                     line,
@@ -297,7 +325,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     in_loop: self.loop_depth > 0,
                     is_awaited: self.in_await,
                     enclosing_function_kind: self.current_function_kind.clone(),
-                    first_arg_chain: None,
+                    first_arg_chain,
                 };
                 self.analysis.ctx_calls.push(ctx_call);
 
