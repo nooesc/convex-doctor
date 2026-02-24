@@ -15,6 +15,7 @@ pub fn compute_score(diagnostics: &[Diagnostic]) -> ScoreResult {
         let (raw_per_instance, cap) = match d.severity {
             Severity::Error => (3.0, 15.0),
             Severity::Warning => (1.0, 5.0),
+            Severity::Info => (0.0, 0.0),
         };
         let weight = d.category.weight();
         let entry = rule_deductions

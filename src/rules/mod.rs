@@ -1,4 +1,5 @@
 pub mod architecture;
+pub mod client;
 pub mod configuration;
 pub mod context;
 pub mod correctness;
@@ -28,6 +29,23 @@ pub struct FileAnalysis {
     pub index_definitions: Vec<IndexDef>,
     pub first_calls: Vec<CallLocation>,
     pub awaited_identifiers: Vec<String>,
+    pub cron_api_refs: Vec<CallLocation>,
+    pub generic_id_validators: Vec<CallLocation>,
+    pub conditional_exports: Vec<CallLocation>,
+    pub non_deterministic_calls: Vec<CallLocation>,
+    pub throw_generic_errors: Vec<CallLocation>,
+    pub raw_arg_patches: Vec<CallLocation>,
+    pub http_routes: Vec<HttpRoute>,
+    pub schema_id_fields: Vec<SchemaIdField>,
+    pub collect_variable_filters: Vec<CallLocation>,
+    pub filter_field_names: Vec<FilterField>,
+    pub search_index_definitions: Vec<SearchIndexDef>,
+    pub large_writes: Vec<CallLocation>,
+    pub optional_schema_fields: Vec<CallLocation>,
+    pub unexported_function_count: u32,
+    pub convex_hook_calls: Vec<ConvexHookCall>,
+    pub has_convex_provider: bool,
+    pub is_component_file: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -35,6 +53,7 @@ pub struct ConvexFunction {
     pub name: String,
     pub kind: FunctionKind,
     pub has_args_validator: bool,
+    pub has_any_validator_in_args: bool,
     pub arg_names: Vec<String>,
     pub has_return_validator: bool,
     pub has_auth_check: bool,
@@ -151,6 +170,44 @@ pub struct IndexDef {
     pub line: u32,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct HttpRoute {
+    pub method: String,
+    pub path: String,
+    pub line: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SchemaIdField {
+    pub field_name: String,
+    pub table_ref: String,
+    pub line: u32,
+    pub col: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FilterField {
+    pub field_name: String,
+    pub line: u32,
+    pub col: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SearchIndexDef {
+    pub table: String,
+    pub name: String,
+    pub has_filter_fields: bool,
+    pub line: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ConvexHookCall {
+    pub hook_name: String,
+    pub line: u32,
+    pub col: u32,
+    pub in_render_body: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct ProjectContext {
     pub has_schema: bool,
@@ -159,6 +216,12 @@ pub struct ProjectContext {
     pub has_env_local: bool,
     pub env_gitignored: bool,
     pub uses_auth: bool,
+    pub has_generated_dir: bool,
+    pub has_tsconfig: bool,
+    pub node_version_from_config: Option<String>,
+    pub generated_files_modified: bool,
+    pub all_index_definitions: Vec<IndexDef>,
+    pub all_schema_id_fields: Vec<SchemaIdField>,
 }
 
 pub trait Rule: Send + Sync {

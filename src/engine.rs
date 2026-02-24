@@ -104,6 +104,18 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
             has_env_local: path.join(".env.local").exists(),
             env_gitignored: check_gitignore_contains(path, ".env.local"),
             uses_auth,
+            has_generated_dir: project.convex_dir.join("_generated").is_dir(),
+            has_tsconfig: project.convex_dir.join("tsconfig.json").exists(),
+            node_version_from_config: read_node_version_from_convex_json(path),
+            generated_files_modified: check_generated_files_modified(path),
+            all_index_definitions: analyses
+                .iter()
+                .flat_map(|a| a.index_definitions.clone())
+                .collect(),
+            all_schema_id_fields: analyses
+                .iter()
+                .flat_map(|a| a.schema_id_fields.clone())
+                .collect(),
         };
 
         let project_diagnostics: Vec<Diagnostic> = registry
@@ -181,4 +193,25 @@ pub fn get_changed_files(root: &Path, base: &str) -> Result<Vec<PathBuf>, String
         .map(|l| root.join(l))
         .filter(|p| p.exists())
         .collect())
+}
+
+fn read_node_version_from_convex_json(root: &Path) -> Option<String> {
+    let path = root.join("convex.json");
+    let contents = std::fs::read_to_string(&path).ok()?;
+    let json: serde_json::Value = serde_json::from_str(&contents).ok()?;
+    json.get("node")
+        .and_then(|v| v.get("version"))
+        .or_else(|| json.get("nodeVersion"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+fn check_generated_files_modified(root: &Path) -> bool {
+    std::process::Command::new("git")
+        .args(["status", "--porcelain", "convex/_generated"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false)
 }

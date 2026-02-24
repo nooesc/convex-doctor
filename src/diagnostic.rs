@@ -18,6 +18,7 @@ pub struct Diagnostic {
 pub enum Severity {
     Error,
     Warning,
+    Info,
 }
 
 impl fmt::Display for Severity {
@@ -25,6 +26,7 @@ impl fmt::Display for Severity {
         match self {
             Severity::Error => write!(f, "error"),
             Severity::Warning => write!(f, "warning"),
+            Severity::Info => write!(f, "info"),
         }
     }
 }
@@ -37,6 +39,7 @@ pub enum Category {
     Schema,
     Architecture,
     Configuration,
+    ClientSide,
 }
 
 impl Category {
@@ -48,6 +51,7 @@ impl Category {
             Category::Schema => 1.0,
             Category::Architecture => 0.8,
             Category::Configuration => 1.0,
+            Category::ClientSide => 1.0,
         }
     }
 }
@@ -61,6 +65,7 @@ impl fmt::Display for Category {
             Category::Schema => write!(f, "Schema"),
             Category::Architecture => write!(f, "Architecture"),
             Category::Configuration => write!(f, "Configuration"),
+            Category::ClientSide => write!(f, "Client-Side"),
         }
     }
 }

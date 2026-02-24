@@ -65,6 +65,7 @@ impl Reporter for CliReporter {
                 let severity_str = match d.severity {
                     Severity::Error => "ERROR".red().bold().to_string(),
                     Severity::Warning => " WARN".yellow().to_string(),
+                    Severity::Info => " INFO".blue().to_string(),
                 };
                 out.push_str(&format!("  {}  {}\n", severity_str, d.rule.dimmed()));
                 out.push_str(&format!("         {}\n", d.message));
