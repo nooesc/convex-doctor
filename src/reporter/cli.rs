@@ -39,11 +39,19 @@ impl Reporter for CliReporter {
             .iter()
             .filter(|d| d.severity == Severity::Error)
             .count();
-        let warnings = diagnostics.len() - errors;
+        let warnings = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .count();
+        let infos = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .count();
         out.push_str(&format!(
-            "  {} errors, {} warnings\n",
+            "  {} errors, {} warnings, {} info\n",
             errors.to_string().red(),
-            warnings.to_string().yellow()
+            warnings.to_string().yellow(),
+            infos.to_string().blue()
         ));
 
         let mut by_category: BTreeMap<String, Vec<&Diagnostic>> = BTreeMap::new();

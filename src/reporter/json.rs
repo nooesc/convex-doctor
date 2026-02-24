@@ -25,6 +25,7 @@ struct ScoreJson {
 struct SummaryJson {
     errors: usize,
     warnings: usize,
+    infos: usize,
 }
 
 impl Reporter for JsonReporter {
@@ -39,14 +40,25 @@ impl Reporter for JsonReporter {
             .iter()
             .filter(|d| d.severity == Severity::Error)
             .count();
-        let warnings = diagnostics.len() - errors;
+        let warnings = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Warning)
+            .count();
+        let infos = diagnostics
+            .iter()
+            .filter(|d| d.severity == Severity::Info)
+            .count();
         let output = JsonOutput {
             version: env!("CARGO_PKG_VERSION"),
             score: ScoreJson {
                 value: score.value,
                 label: score.label.to_string(),
             },
-            summary: SummaryJson { errors, warnings },
+            summary: SummaryJson {
+                errors,
+                warnings,
+                infos,
+            },
             diagnostics,
         };
         serde_json::to_string_pretty(&output).unwrap_or_else(|_| "{}".to_string())
