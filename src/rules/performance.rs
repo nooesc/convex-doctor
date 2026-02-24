@@ -1,5 +1,5 @@
 use crate::diagnostic::{Category, Diagnostic, Severity};
-use crate::rules::{FileAnalysis, Rule};
+use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
 
 pub struct UnboundedCollect;
 impl Rule for UnboundedCollect {
@@ -212,5 +212,170 @@ impl Rule for HelperVsRun {
                 column: c.col,
             })
             .collect()
+    }
+}
+
+/// Project-level rule: warn when a schema field using `v.id("table")` has no
+/// matching index that includes that field.
+pub struct MissingIndexOnForeignKey;
+impl Rule for MissingIndexOnForeignKey {
+    fn id(&self) -> &'static str {
+        "perf/missing-index-on-foreign-key"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        vec![]
+    }
+    fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
+        ctx.all_schema_id_fields
+            .iter()
+            .filter(|id_field| {
+                // Check if any index includes this field_name
+                !ctx.all_index_definitions.iter().any(|idx| {
+                    if id_field.field_name.is_empty() {
+                        return false;
+                    }
+                    idx.fields.contains(&id_field.field_name)
+                })
+            })
+            .map(|id_field| {
+                let message = format!(
+                    "Foreign key field referencing `{}` has no index",
+                    id_field.table_ref
+                );
+                Diagnostic {
+                    rule: self.id().to_string(),
+                    severity: Severity::Warning,
+                    category: self.category(),
+                    message,
+                    help: "Fields with `v.id()` references are commonly queried. Add an index to avoid full table scans.".to_string(),
+                    file: "convex/schema.ts".to_string(),
+                    line: id_field.line,
+                    column: id_field.col,
+                }
+            })
+            .collect()
+    }
+}
+
+/// Per-file rule: warn when a public action can be called directly from the client.
+pub struct ActionFromClient;
+impl Rule for ActionFromClient {
+    fn id(&self) -> &'static str {
+        "perf/action-from-client"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .functions
+            .iter()
+            .filter(|f| f.kind == FunctionKind::Action)
+            .map(|f| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!("Public action `{}` can be called directly from client", f.name),
+                help: "Calling actions from the browser is an anti-pattern. Use a mutation that schedules the action via `ctx.scheduler.runAfter(0, ...)`.".to_string(),
+                file: analysis.file_path.clone(),
+                line: f.span_line,
+                column: f.span_col,
+            })
+            .collect()
+    }
+}
+
+/// Per-file rule: warn when results are collected then filtered in JavaScript
+/// instead of using `.withIndex()` or `.filter()` on the query.
+pub struct CollectThenFilter;
+impl Rule for CollectThenFilter {
+    fn id(&self) -> &'static str {
+        "perf/collect-then-filter"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .collect_variable_filters
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: c.detail.clone(),
+                help: "Collecting all results then filtering in JavaScript wastes bandwidth and breaks query caching. Use `.withIndex()` or `.filter()` on the query instead.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Per-file rule: info when a large inline document write is detected.
+pub struct LargeDocumentWrite;
+impl Rule for LargeDocumentWrite {
+    fn id(&self) -> &'static str {
+        "perf/large-document-write"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .large_writes
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: format!("Large inline document write: {}", c.detail),
+                help: "Documents approaching the 1 MiB limit may fail at runtime. Consider breaking large documents into related smaller ones.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Per-file rule: warn when a public query uses `.collect()` without pagination,
+/// potentially returning unbounded results to the client.
+pub struct NoPaginationForList;
+impl Rule for NoPaginationForList {
+    fn id(&self) -> &'static str {
+        "perf/no-pagination-for-list"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let has_public_query = analysis
+            .functions
+            .iter()
+            .any(|f| f.kind == FunctionKind::Query);
+        let has_collect = !analysis.collect_calls.is_empty();
+
+        if has_public_query && has_collect {
+            // Emit one diagnostic per file
+            let first_collect = &analysis.collect_calls[0];
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: "Public query with `.collect()` may return unbounded results to client"
+                    .to_string(),
+                help: "Consider using `.paginate()` or `.take(n)` for public queries to limit data sent to clients.".to_string(),
+                file: analysis.file_path.clone(),
+                line: first_collect.line,
+                column: first_collect.col,
+            }]
+        } else {
+            vec![]
+        }
     }
 }

@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use crate::diagnostic::{Category, Diagnostic, Severity};
-use crate::rules::{FileAnalysis, ProjectContext, Rule};
+use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
 
 pub struct MissingArgValidators;
 impl Rule for MissingArgValidators {
@@ -260,5 +262,204 @@ impl Rule for SpoofableAccessControl {
                 })
             })
             .collect()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tier 1 new security rules
+// ---------------------------------------------------------------------------
+
+pub struct MissingTableId;
+impl Rule for MissingTableId {
+    fn id(&self) -> &'static str {
+        "security/missing-table-id"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .generic_id_validators
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "Argument validator uses `v.id()` without explicit table: {}",
+                    loc.detail
+                ),
+                help: "Use `v.id(\"tableName\")` to prevent cross-table ID confusion. Matches the ESLint `explicit-table-ids` rule.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+pub struct MissingHttpAuth;
+impl Rule for MissingHttpAuth {
+    fn id(&self) -> &'static str {
+        "security/missing-http-auth"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .functions
+            .iter()
+            .filter(|f| f.kind == FunctionKind::HttpAction && !f.has_auth_check)
+            .map(|f| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!(
+                    "httpAction `{}` does not check authentication",
+                    f.name
+                ),
+                help: "HTTP actions are publicly accessible. Add `ctx.auth.getUserIdentity()` or check the Authorization header.".to_string(),
+                file: analysis.file_path.clone(),
+                line: f.span_line,
+                column: f.span_col,
+            })
+            .collect()
+    }
+}
+
+pub struct ConditionalFunctionExport;
+impl Rule for ConditionalFunctionExport {
+    fn id(&self) -> &'static str {
+        "security/conditional-function-export"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .conditional_exports
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: "Conditional function export based on environment variable".to_string(),
+                help: "Do not condition Convex function exports on environment variables. This can cause inconsistent behavior between deployments.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+pub struct GenericMutationArgs;
+impl Rule for GenericMutationArgs {
+    fn id(&self) -> &'static str {
+        "security/generic-mutation-args"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .functions
+            .iter()
+            .filter(|f| f.is_public() && f.has_any_validator_in_args)
+            .map(|f| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "Public {} `{}` uses `v.any()` in argument validators",
+                    f.kind_str(),
+                    f.name
+                ),
+                help: "Using `v.any()` defeats the purpose of validation. Use specific validators for type safety and security.".to_string(),
+                file: analysis.file_path.clone(),
+                line: f.span_line,
+                column: f.span_col,
+            })
+            .collect()
+    }
+}
+
+pub struct OverlyBroadPatch;
+impl Rule for OverlyBroadPatch {
+    fn id(&self) -> &'static str {
+        "security/overly-broad-patch"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .raw_arg_patches
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: loc.detail.clone(),
+                help: "Passing raw client args to `ctx.db.patch` is a mass-assignment vulnerability. Destructure and pass only the allowed fields.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+pub struct HttpMissingCors;
+impl Rule for HttpMissingCors {
+    fn id(&self) -> &'static str {
+        "security/http-missing-cors"
+    }
+    fn category(&self) -> Category {
+        Category::Security
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Group routes by path
+        let mut routes_by_path: HashMap<&str, Vec<&str>> = HashMap::new();
+        for route in &analysis.http_routes {
+            routes_by_path
+                .entry(route.path.as_str())
+                .or_default()
+                .push(route.method.as_str());
+        }
+
+        let actionable_methods = ["GET", "POST", "PUT", "DELETE", "PATCH"];
+
+        let mut diagnostics = Vec::new();
+        for (path, methods) in &routes_by_path {
+            let has_options = methods.iter().any(|m| m.eq_ignore_ascii_case("OPTIONS"));
+            let has_actionable = methods
+                .iter()
+                .any(|m| actionable_methods.iter().any(|a| m.eq_ignore_ascii_case(a)));
+            if has_actionable && !has_options {
+                // Find the line of the first route for this path
+                let line = analysis
+                    .http_routes
+                    .iter()
+                    .find(|r| r.path.as_str() == *path)
+                    .map(|r| r.line)
+                    .unwrap_or(0);
+                diagnostics.push(Diagnostic {
+                    rule: self.id().to_string(),
+                    severity: Severity::Warning,
+                    category: self.category(),
+                    message: format!(
+                        "HTTP route `{}` has no OPTIONS handler for CORS",
+                        path
+                    ),
+                    help: "Add an OPTIONS handler to support CORS preflight requests. See the Convex CORS guide.".to_string(),
+                    file: analysis.file_path.clone(),
+                    line,
+                    column: 0,
+                });
+            }
+        }
+        diagnostics
     }
 }

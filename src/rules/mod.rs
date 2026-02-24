@@ -248,7 +248,7 @@ impl Default for RuleRegistry {
 impl RuleRegistry {
     pub fn new() -> Self {
         let rules: Vec<Box<dyn Rule>> = vec![
-            // Security (7)
+            // Security (13)
             Box::new(security::MissingArgValidators),
             Box::new(security::MissingReturnValidators),
             Box::new(security::MissingAuthCheck),
@@ -256,7 +256,13 @@ impl RuleRegistry {
             Box::new(security::HardcodedSecrets),
             Box::new(security::EnvNotGitignored),
             Box::new(security::SpoofableAccessControl),
-            // Performance (7)
+            Box::new(security::MissingTableId),
+            Box::new(security::MissingHttpAuth),
+            Box::new(security::ConditionalFunctionExport),
+            Box::new(security::GenericMutationArgs),
+            Box::new(security::OverlyBroadPatch),
+            Box::new(security::HttpMissingCors),
+            // Performance (12)
             Box::new(performance::UnboundedCollect),
             Box::new(performance::FilterWithoutIndex),
             Box::new(performance::DateNowInQuery),
@@ -264,7 +270,12 @@ impl RuleRegistry {
             Box::new(performance::SequentialRunCalls),
             Box::new(performance::UnnecessaryRunAction),
             Box::new(performance::HelperVsRun),
-            // Correctness (7)
+            Box::new(performance::MissingIndexOnForeignKey),
+            Box::new(performance::ActionFromClient),
+            Box::new(performance::CollectThenFilter),
+            Box::new(performance::LargeDocumentWrite),
+            Box::new(performance::NoPaginationForList),
+            // Correctness (15)
             Box::new(correctness::UnwaitedPromise),
             Box::new(correctness::OldFunctionSyntax),
             Box::new(correctness::DbInAction),
@@ -272,18 +283,43 @@ impl RuleRegistry {
             Box::new(correctness::WrongRuntimeImport),
             Box::new(correctness::DirectFunctionRef),
             Box::new(correctness::MissingUnique),
-            // Schema (4)
+            Box::new(correctness::QuerySideEffect),
+            Box::new(correctness::MutationInQuery),
+            Box::new(correctness::CronUsesPublicApi),
+            Box::new(correctness::NodeQueryMutation),
+            Box::new(correctness::SchedulerReturnIgnored),
+            Box::new(correctness::NonDeterministicInQuery),
+            Box::new(correctness::ReplaceVsPatch),
+            Box::new(correctness::GeneratedCodeModified),
+            // Schema (8)
             Box::new(schema::MissingSchema),
             Box::new(schema::DeepNesting),
             Box::new(schema::ArrayRelationships),
             Box::new(schema::RedundantIndex),
-            // Architecture (3)
+            Box::new(schema::TooManyIndexes),
+            Box::new(schema::MissingSearchIndexFilter),
+            Box::new(schema::OptionalFieldNoDefaultHandling),
+            Box::new(schema::MissingIndexForQuery),
+            // Architecture (8)
             Box::new(architecture::LargeHandler),
             Box::new(architecture::MonolithicFile),
             Box::new(architecture::DuplicatedAuth),
-            // Configuration (2)
+            Box::new(architecture::ActionWithoutScheduling),
+            Box::new(architecture::NoConvexError),
+            Box::new(architecture::MixedFunctionTypes),
+            Box::new(architecture::NoHelperFunctions),
+            Box::new(architecture::DeepFunctionChain),
+            // Configuration (5)
             Box::new(configuration::MissingConvexJson),
             Box::new(configuration::MissingAuthConfig),
+            Box::new(configuration::MissingGeneratedCode),
+            Box::new(configuration::OutdatedNodeVersion),
+            Box::new(configuration::MissingTsconfig),
+            // Client-Side (4)
+            Box::new(client::MutationInRender),
+            Box::new(client::UnhandledLoadingState),
+            Box::new(client::ActionInsteadOfMutation),
+            Box::new(client::MissingConvexProvider),
         ];
 
         RuleRegistry { rules }

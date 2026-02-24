@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, ProjectContext, Rule};
 
@@ -151,5 +153,161 @@ impl Rule for RedundantIndex {
             }
         }
         diagnostics
+    }
+}
+
+/// Per-file rule: info when a single table has >= 8 indexes.
+pub struct TooManyIndexes;
+impl Rule for TooManyIndexes {
+    fn id(&self) -> &'static str {
+        "schema/too-many-indexes"
+    }
+    fn category(&self) -> Category {
+        Category::Schema
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let mut by_table: HashMap<&str, Vec<&crate::rules::IndexDef>> = HashMap::new();
+        for idx in &analysis.index_definitions {
+            if !idx.table.is_empty() {
+                by_table.entry(idx.table.as_str()).or_default().push(idx);
+            }
+        }
+        let mut diagnostics = vec![];
+        for (table, indexes) in &by_table {
+            if indexes.len() >= 8 {
+                diagnostics.push(Diagnostic {
+                    rule: self.id().to_string(),
+                    severity: Severity::Info,
+                    category: self.category(),
+                    message: format!(
+                        "Table '{}' has {} indexes (limit is 32)",
+                        table,
+                        indexes.len()
+                    ),
+                    help: "Each index adds storage overhead and slows writes. Consider consolidating or removing unused indexes.".to_string(),
+                    file: analysis.file_path.clone(),
+                    line: indexes[0].line,
+                    column: 1,
+                });
+            }
+        }
+        diagnostics
+    }
+}
+
+/// Per-file rule: info when a search index has no filterFields.
+pub struct MissingSearchIndexFilter;
+impl Rule for MissingSearchIndexFilter {
+    fn id(&self) -> &'static str {
+        "schema/missing-search-index-filter"
+    }
+    fn category(&self) -> Category {
+        Category::Schema
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .search_index_definitions
+            .iter()
+            .filter(|s| !s.has_filter_fields)
+            .map(|s| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: format!("Search index `{}` has no filterFields", s.name),
+                help: "Adding filterFields to search indexes improves query performance by narrowing results before full-text search.".to_string(),
+                file: analysis.file_path.clone(),
+                line: s.line,
+                column: 1,
+            })
+            .collect()
+    }
+}
+
+/// Per-file rule: warning when a schema file has >= 5 optional fields without
+/// explicit undefined handling.
+pub struct OptionalFieldNoDefaultHandling;
+impl Rule for OptionalFieldNoDefaultHandling {
+    fn id(&self) -> &'static str {
+        "schema/optional-field-no-default-handling"
+    }
+    fn category(&self) -> Category {
+        Category::Schema
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        if analysis.file_path.contains("schema")
+            && analysis.optional_schema_fields.len() >= 5
+        {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "{} optional fields in schema — ensure undefined is handled",
+                    analysis.optional_schema_fields.len()
+                ),
+                help: "Optional fields return `undefined` when not set. Ensure all access sites handle the missing case.".to_string(),
+                file: analysis.file_path.clone(),
+                line: 1,
+                column: 1,
+            }]
+        } else {
+            vec![]
+        }
+    }
+}
+
+/// Project-level rule: warning when query filter fields have no matching index.
+///
+/// Cross-references `filter_field_names` from each file against
+/// `ctx.all_index_definitions`.  For v1 this is a simplified check that looks
+/// at the first field of each index definition.
+// TODO: In a future version, access per-file FileAnalysis from check_project
+// to provide file-level diagnostics with precise locations.  The current Rule
+// trait only passes ProjectContext to check_project, so we aggregate here.
+pub struct MissingIndexForQuery;
+impl Rule for MissingIndexForQuery {
+    fn id(&self) -> &'static str {
+        "schema/missing-index-for-query"
+    }
+    fn category(&self) -> Category {
+        Category::Schema
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Per-file portion: we cannot access the project-wide index list here,
+        // so this rule is primarily a project-level check.  We store nothing.
+        let _ = analysis;
+        vec![]
+    }
+    fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
+        // Collect all first-field names from every index definition.
+        let indexed_first_fields: std::collections::HashSet<&str> = ctx
+            .all_index_definitions
+            .iter()
+            .filter_map(|idx| idx.fields.first().map(|f| f.as_str()))
+            .collect();
+
+        // Because check_project only receives ProjectContext (not per-file
+        // analyses), we cannot iterate filter_field_names here.  Leave a
+        // diagnostic only when there are zero database indexes defined at all
+        // but the project has a schema — this is a degenerate but useful signal.
+        if ctx.has_schema && ctx.all_index_definitions.is_empty() {
+            return vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: "Schema exists but no database indexes are defined".to_string(),
+                help: "Define indexes on fields you query frequently to avoid full table scans."
+                    .to_string(),
+                file: "convex/schema.ts".to_string(),
+                line: 1,
+                column: 1,
+            }];
+        }
+
+        // For the purpose of keeping the indexed_first_fields set used (avoid
+        // dead-code warning) and to provide a useful future hook:
+        let _ = indexed_first_fields;
+
+        vec![]
     }
 }

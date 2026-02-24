@@ -1,5 +1,5 @@
 use crate::diagnostic::{Category, Diagnostic, Severity};
-use crate::rules::{FileAnalysis, Rule};
+use crate::rules::{FileAnalysis, ProjectContext, Rule};
 
 /// Patterns that should be awaited when used with ctx.
 const AWAITABLE_CTX_PREFIXES: &[&str] = &[
@@ -255,5 +255,270 @@ impl Rule for MissingUnique {
                 column: c.col,
             })
             .collect()
+    }
+}
+
+/// Detect ctx.db write operations and ctx.scheduler calls inside query functions.
+pub struct QuerySideEffect;
+impl Rule for QuerySideEffect {
+    fn id(&self) -> &'static str {
+        "correctness/query-side-effect"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        const WRITE_PREFIXES: &[&str] = &[
+            "ctx.db.insert",
+            "ctx.db.patch",
+            "ctx.db.replace",
+            "ctx.db.delete",
+            "ctx.scheduler",
+        ];
+        analysis
+            .ctx_calls
+            .iter()
+            .filter(|c| {
+                c.enclosing_function_kind
+                    .as_ref()
+                    .is_some_and(|k| k.is_query())
+                    && WRITE_PREFIXES.iter().any(|p| c.chain.starts_with(p))
+            })
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!(
+                    "`{}` in a query function — queries must be read-only",
+                    c.chain
+                ),
+                help: "Queries must be deterministic and side-effect-free. Move writes to a mutation."
+                    .to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect ctx.runMutation called from query functions.
+pub struct MutationInQuery;
+impl Rule for MutationInQuery {
+    fn id(&self) -> &'static str {
+        "correctness/mutation-in-query"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .ctx_calls
+            .iter()
+            .filter(|c| {
+                c.chain.starts_with("ctx.runMutation")
+                    && c.enclosing_function_kind
+                        .as_ref()
+                        .is_some_and(|k| k.is_query())
+            })
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!(
+                    "`{}` called from a query function",
+                    c.chain
+                ),
+                help: "Queries cannot call mutations. Move mutation calls to a mutation or action."
+                    .to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect cron jobs that use public API references instead of internal ones.
+pub struct CronUsesPublicApi;
+impl Rule for CronUsesPublicApi {
+    fn id(&self) -> &'static str {
+        "correctness/cron-uses-public-api"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .cron_api_refs
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!("Cron job uses public API reference `{}`", c.detail),
+                help: "Use `internal.*` instead of `api.*` in cron job definitions.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect queries/mutations defined in "use node" files (only actions allowed).
+pub struct NodeQueryMutation;
+impl Rule for NodeQueryMutation {
+    fn id(&self) -> &'static str {
+        "correctness/node-query-mutation"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        if !analysis.has_use_node {
+            return vec![];
+        }
+        analysis
+            .functions
+            .iter()
+            .filter(|f| {
+                matches!(
+                    f.kind,
+                    crate::rules::FunctionKind::Query
+                        | crate::rules::FunctionKind::Mutation
+                        | crate::rules::FunctionKind::InternalQuery
+                        | crate::rules::FunctionKind::InternalMutation
+                )
+            })
+            .map(|f| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!("{} `{}` in a \"use node\" file", f.kind_str(), f.name),
+                help: "Only actions can use the Node.js runtime.".to_string(),
+                file: analysis.file_path.clone(),
+                line: f.span_line,
+                column: f.span_col,
+            })
+            .collect()
+    }
+}
+
+/// Suggest capturing scheduler return values for future cancellation/monitoring.
+pub struct SchedulerReturnIgnored;
+impl Rule for SchedulerReturnIgnored {
+    fn id(&self) -> &'static str {
+        "correctness/scheduler-return-ignored"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .ctx_calls
+            .iter()
+            .filter(|c| {
+                (c.chain.starts_with("ctx.scheduler.runAfter")
+                    || c.chain.starts_with("ctx.scheduler.runAt"))
+                    && c.assigned_to.is_none()
+            })
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: format!("`{}` return value not captured", c.chain),
+                help: "Capture the returned scheduled function ID if you need to cancel or monitor it.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect non-deterministic calls (Math.random(), new Date()) in query functions.
+pub struct NonDeterministicInQuery;
+impl Rule for NonDeterministicInQuery {
+    fn id(&self) -> &'static str {
+        "correctness/non-deterministic-in-query"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .non_deterministic_calls
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!("`{}` in a query function breaks determinism", c.detail),
+                help: "Queries must be deterministic. Pass values as arguments or use a mutation."
+                    .to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Suggest using ctx.db.patch instead of ctx.db.replace for partial updates.
+pub struct ReplaceVsPatch;
+impl Rule for ReplaceVsPatch {
+    fn id(&self) -> &'static str {
+        "correctness/replace-vs-patch"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .ctx_calls
+            .iter()
+            .filter(|c| c.chain.starts_with("ctx.db.replace"))
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: "`ctx.db.replace` overwrites the entire document".to_string(),
+                help: "Did you mean `ctx.db.patch`? `replace` removes all fields not in the new object. Use `patch` for partial updates.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Project-level rule: detect modifications to convex/_generated/ files.
+pub struct GeneratedCodeModified;
+impl Rule for GeneratedCodeModified {
+    fn id(&self) -> &'static str {
+        "correctness/generated-code-modified"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        vec![]
+    }
+    fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
+        if ctx.generated_files_modified {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: "Modified files detected in convex/_generated/".to_string(),
+                help: "Files in _generated/ are auto-generated and will be overwritten. Revert manual changes.".to_string(),
+                file: "convex/_generated/".to_string(),
+                line: 0,
+                column: 0,
+            }]
+        } else {
+            vec![]
+        }
     }
 }

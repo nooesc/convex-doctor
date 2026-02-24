@@ -11,12 +11,13 @@ fn test_registry_has_all_categories() {
     assert!(categories.contains(&Category::Architecture));
     assert!(categories.contains(&Category::Schema));
     assert!(categories.contains(&Category::Configuration));
+    assert!(categories.contains(&Category::ClientSide));
 }
 
 #[test]
 fn test_registry_rule_count() {
     let registry = RuleRegistry::new();
-    assert_eq!(registry.rules().len(), 30);
+    assert_eq!(registry.rules().len(), 65);
 }
 
 #[test]

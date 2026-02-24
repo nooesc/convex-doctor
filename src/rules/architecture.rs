@@ -99,3 +99,173 @@ impl Rule for DuplicatedAuth {
         }
     }
 }
+
+/// Info rule: `ctx.runAction` called directly from a mutation risks partial commits
+/// if the action fails. Suggest using `ctx.scheduler.runAfter(0, ...)` instead.
+pub struct ActionWithoutScheduling;
+impl Rule for ActionWithoutScheduling {
+    fn id(&self) -> &'static str {
+        "arch/action-without-scheduling"
+    }
+    fn category(&self) -> Category {
+        Category::Architecture
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .ctx_calls
+            .iter()
+            .filter(|c| {
+                c.chain.starts_with("ctx.runAction")
+                    && c.enclosing_function_kind
+                        .as_ref()
+                        .is_some_and(|k| k.is_mutation())
+            })
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: format!("`ctx.runAction` called directly from mutation `{}`", c.chain),
+                help: "If the action fails, mutation writes are still committed. Consider `ctx.scheduler.runAfter(0, ...)` to decouple the action.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Info rule: `throw new Error(...)` in Convex handlers produces redacted "Server Error"
+/// messages in production. Suggest using `ConvexError` for structured client errors.
+pub struct NoConvexError;
+impl Rule for NoConvexError {
+    fn id(&self) -> &'static str {
+        "arch/no-convex-error"
+    }
+    fn category(&self) -> Category {
+        Category::Architecture
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .throw_generic_errors
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: "`throw new Error(...)` in Convex handler".to_string(),
+                help: "Generic errors are redacted to 'Server Error' in production. Use `throw new ConvexError(...)` to send structured error data to clients.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+/// Info rule: mixing public and internal functions in the same file makes
+/// security auditing harder. Suggest splitting into separate files.
+pub struct MixedFunctionTypes;
+impl Rule for MixedFunctionTypes {
+    fn id(&self) -> &'static str {
+        "arch/mixed-function-types"
+    }
+    fn category(&self) -> Category {
+        Category::Architecture
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let has_public = analysis.functions.iter().any(|f| f.is_public());
+        let has_internal = analysis.functions.iter().any(|f| !f.is_public());
+        if has_public && has_internal {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: "File exports both public and internal functions".to_string(),
+                help: "Mixing public and internal functions in the same file makes security auditing harder. Consider splitting into separate files.".to_string(),
+                file: analysis.file_path.clone(),
+                line: 1,
+                column: 1,
+            }]
+        } else {
+            vec![]
+        }
+    }
+}
+
+/// Info rule: files with 3+ large handlers and no helper functions suggest
+/// logic should be extracted into shared unexported helpers.
+pub struct NoHelperFunctions;
+impl Rule for NoHelperFunctions {
+    fn id(&self) -> &'static str {
+        "arch/no-helper-functions"
+    }
+    fn category(&self) -> Category {
+        Category::Architecture
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let large_handler_count = analysis
+            .functions
+            .iter()
+            .filter(|f| f.handler_line_count > 15)
+            .count();
+        if large_handler_count >= 3 && analysis.unexported_function_count == 0 {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Info,
+                category: self.category(),
+                message: format!(
+                    "{} handlers with >15 lines and no helper functions",
+                    large_handler_count
+                ),
+                help: "Extract shared business logic into unexported helper functions to improve readability and testability.".to_string(),
+                file: analysis.file_path.clone(),
+                line: 1,
+                column: 1,
+            }]
+        } else {
+            vec![]
+        }
+    }
+}
+
+/// Warning rule: 4+ `ctx.run*` calls in a single action function suggests
+/// a deep transaction chain that could be batched into fewer mutations.
+pub struct DeepFunctionChain;
+impl Rule for DeepFunctionChain {
+    fn id(&self) -> &'static str {
+        "arch/deep-function-chain"
+    }
+    fn category(&self) -> Category {
+        Category::Architecture
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let run_calls_in_actions: usize = analysis
+            .ctx_calls
+            .iter()
+            .filter(|c| {
+                c.enclosing_function_kind
+                    .as_ref()
+                    .is_some_and(|k| k.is_action())
+                    && (c.chain.starts_with("ctx.runQuery")
+                        || c.chain.starts_with("ctx.runMutation"))
+            })
+            .count();
+        if run_calls_in_actions >= 4 {
+            vec![Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "{} ctx.run* calls in action — deep function chain",
+                    run_calls_in_actions
+                ),
+                help: "Each `ctx.runQuery`/`ctx.runMutation` is a separate transaction. Consider batching related operations into fewer mutations.".to_string(),
+                file: analysis.file_path.clone(),
+                line: 1,
+                column: 1,
+            }]
+        } else {
+            vec![]
+        }
+    }
+}
