@@ -7,8 +7,8 @@ use oxc_parser::{ParseOptions, Parser};
 use oxc_span::{GetSpan, SourceType};
 
 use super::{
-    CallLocation, ConvexFunction, CtxCall, DeprecatedCall, FileAnalysis, FunctionKind, ImportInfo,
-    IndexDef,
+    CallLocation, ConvexFunction, ConvexHookCall, CtxCall, DeprecatedCall, FileAnalysis,
+    FilterField, FunctionKind, HttpRoute, ImportInfo, IndexDef, SchemaIdField, SearchIndexDef,
 };
 
 /// Analyze a TypeScript/JavaScript file for Convex-specific patterns.
@@ -212,6 +212,132 @@ impl<'a> ConvexVisitor<'a> {
         }
         false
     }
+
+    /// Check if an expression tree contains `process.env` anywhere.
+    fn contains_process_env(expr: &Expression<'_>) -> bool {
+        match expr {
+            Expression::StaticMemberExpression(mem) => {
+                if let Expression::Identifier(ident) = &mem.object {
+                    if ident.name.as_str() == "process" && mem.property.name.as_str() == "env" {
+                        return true;
+                    }
+                }
+                Self::contains_process_env(&mem.object)
+            }
+            Expression::ComputedMemberExpression(mem) => Self::contains_process_env(&mem.object),
+            Expression::CallExpression(call) => {
+                Self::contains_process_env(&call.callee)
+                    || call
+                        .arguments
+                        .iter()
+                        .any(|a| a.as_expression().is_some_and(|e| Self::contains_process_env(e)))
+            }
+            Expression::ConditionalExpression(cond) => {
+                Self::contains_process_env(&cond.test)
+                    || Self::contains_process_env(&cond.consequent)
+                    || Self::contains_process_env(&cond.alternate)
+            }
+            Expression::BinaryExpression(bin) => {
+                Self::contains_process_env(&bin.left)
+                    || Self::contains_process_env(&bin.right)
+            }
+            Expression::UnaryExpression(un) => Self::contains_process_env(&un.argument),
+            Expression::LogicalExpression(log) => {
+                Self::contains_process_env(&log.left)
+                    || Self::contains_process_env(&log.right)
+            }
+            _ => false,
+        }
+    }
+
+    /// Check if an expression is a Convex function constructor call.
+    fn is_convex_function_call(expr: &Expression<'_>) -> bool {
+        if let Expression::CallExpression(call) = expr {
+            Self::get_function_kind(&call.callee).is_some()
+        } else {
+            false
+        }
+    }
+
+    /// Extract field names from a filter callback argument by searching for q.field("name") patterns.
+    fn extract_filter_field_names(expr: &Expression<'_>) -> Vec<String> {
+        let mut fields = vec![];
+        Self::collect_field_calls(expr, &mut fields);
+        fields
+    }
+
+    fn collect_field_calls(expr: &Expression<'_>, fields: &mut Vec<String>) {
+        match expr {
+            Expression::CallExpression(call) => {
+                // Check if this is q.field("name") or similar param.field("name")
+                if let Expression::StaticMemberExpression(mem) = &call.callee {
+                    if mem.property.name.as_str() == "field" {
+                        if let Expression::Identifier(_) = &mem.object {
+                            if let Some(arg) = call.arguments.first() {
+                                if let Some(Expression::StringLiteral(s)) = arg.as_expression() {
+                                    fields.push(s.value.as_str().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+                // Recurse into callee and arguments
+                Self::collect_field_calls(&call.callee, fields);
+                for arg in &call.arguments {
+                    if let Some(e) = arg.as_expression() {
+                        Self::collect_field_calls(e, fields);
+                    }
+                }
+            }
+            Expression::StaticMemberExpression(mem) => {
+                Self::collect_field_calls(&mem.object, fields);
+            }
+            Expression::ArrowFunctionExpression(arrow) => {
+                // Walk into the arrow function body
+                match &arrow.body.statements.first() {
+                    Some(Statement::ExpressionStatement(stmt)) => {
+                        Self::collect_field_calls(&stmt.expression, fields);
+                    }
+                    Some(Statement::ReturnStatement(ret)) => {
+                        if let Some(arg) = &ret.argument {
+                            Self::collect_field_calls(arg, fields);
+                        }
+                    }
+                    _ => {
+                        for stmt in &arrow.body.statements {
+                            if let Statement::ExpressionStatement(es) = stmt {
+                                Self::collect_field_calls(&es.expression, fields);
+                            } else if let Statement::ReturnStatement(ret) = stmt {
+                                if let Some(arg) = &ret.argument {
+                                    Self::collect_field_calls(arg, fields);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Expression::BinaryExpression(bin) => {
+                Self::collect_field_calls(&bin.left, fields);
+                Self::collect_field_calls(&bin.right, fields);
+            }
+            Expression::LogicalExpression(log) => {
+                Self::collect_field_calls(&log.left, fields);
+                Self::collect_field_calls(&log.right, fields);
+            }
+            Expression::UnaryExpression(un) => {
+                Self::collect_field_calls(&un.argument, fields);
+            }
+            Expression::ParenthesizedExpression(paren) => {
+                Self::collect_field_calls(&paren.expression, fields);
+            }
+            Expression::ConditionalExpression(cond) => {
+                Self::collect_field_calls(&cond.test, fields);
+                Self::collect_field_calls(&cond.consequent, fields);
+                Self::collect_field_calls(&cond.alternate, fields);
+            }
+            _ => {}
+        }
+    }
 }
 
 impl<'a> Visit<'a> for ConvexVisitor<'a> {
@@ -243,6 +369,17 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         }
 
         let (line, _) = self.line_col(it.span.start);
+
+        // 15b. Detect ConvexProvider import from convex/react
+        let source_str = it.source.value.as_str();
+        if source_str.contains("convex/react")
+            && specifiers
+                .iter()
+                .any(|s| s == "ConvexProvider" || s == "ConvexReactClient")
+        {
+            self.analysis.has_convex_provider = true;
+        }
+
         self.analysis.imports.push(ImportInfo {
             source,
             specifiers,
@@ -260,6 +397,21 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             for declarator in &var_decl.declarations {
                 if let BindingPattern::BindingIdentifier(ident) = &declarator.id {
                     export_names.push(ident.name.as_str().to_string());
+                }
+
+                // 6. Detect conditional exports: export const x = process.env.X ? query(...) : mutation(...)
+                if let Some(Expression::ConditionalExpression(cond)) = &declarator.init {
+                    let test_has_process_env = Self::contains_process_env(&cond.test);
+                    let has_convex_call = Self::is_convex_function_call(&cond.consequent)
+                        || Self::is_convex_function_call(&cond.alternate);
+                    if test_has_process_env && has_convex_call {
+                        let (line, col) = self.line_col(declarator.span.start);
+                        self.analysis.conditional_exports.push(CallLocation {
+                            line,
+                            col,
+                            detail: "Conditional export based on process.env".to_string(),
+                        });
+                    }
                 }
             }
         }
@@ -302,10 +454,65 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                                 if let ObjectPropertyKind::ObjectProperty(arg) =
                                                     arg_prop
                                                 {
-                                                    if let Some(arg_name) = arg.key.static_name() {
+                                                    let arg_name_str =
+                                                        arg.key.static_name().map(|n| n.to_string());
+                                                    if let Some(ref arg_name) = arg_name_str {
                                                         builder
                                                             .arg_names
-                                                            .push(arg_name.to_string());
+                                                            .push(arg_name.clone());
+                                                    }
+
+                                                    // Check for v.any() in arg values
+                                                    if let Expression::CallExpression(val_call) =
+                                                        &arg.value
+                                                    {
+                                                        if let Expression::StaticMemberExpression(
+                                                            val_mem,
+                                                        ) = &val_call.callee
+                                                        {
+                                                            if let Expression::Identifier(
+                                                                val_ident,
+                                                            ) = &val_mem.object
+                                                            {
+                                                                if val_ident.name.as_str() == "v"
+                                                                    && val_mem
+                                                                        .property
+                                                                        .name
+                                                                        .as_str()
+                                                                        == "any"
+                                                                {
+                                                                    builder
+                                                                        .has_any_validator_in_args =
+                                                                        true;
+                                                                }
+
+                                                                // Check for v.id() with zero args (generic id validator)
+                                                                if val_ident.name.as_str() == "v"
+                                                                    && val_mem
+                                                                        .property
+                                                                        .name
+                                                                        .as_str()
+                                                                        == "id"
+                                                                    && val_call.arguments.is_empty()
+                                                                {
+                                                                    let detail =
+                                                                        if let Some(ref an) =
+                                                                            arg_name_str
+                                                                        {
+                                                                            format!("Arg '{}' uses v.id() without table name", an)
+                                                                        } else {
+                                                                            "v.id() without table name".to_string()
+                                                                        };
+                                                                    self.analysis
+                                                                        .generic_id_validators
+                                                                        .push(CallLocation {
+                                                                            line,
+                                                                            col,
+                                                                            detail,
+                                                                        });
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                 }
                                             }
@@ -574,6 +781,248 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
 
+        // --- NEW DETECTION PATTERNS ---
+
+        // 1. Detect cron scheduling method calls with api.* arguments
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            let prop_name = mem.property.name.as_str();
+            if matches!(
+                prop_name,
+                "interval" | "hourly" | "daily" | "weekly" | "monthly" | "cron"
+            ) {
+                // Check if any argument resolves to an api.* chain
+                for arg in &it.arguments {
+                    if let Some(expr) = arg.as_expression() {
+                        if let Some(chain) = Self::resolve_member_chain(expr) {
+                            if chain.starts_with("api.") {
+                                self.analysis.cron_api_refs.push(CallLocation {
+                                    line,
+                                    col,
+                                    detail: chain,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2a. Detect Math.random() in query function context
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if mem.property.name.as_str() == "random" {
+                if let Expression::Identifier(ident) = &mem.object {
+                    if ident.name.as_str() == "Math"
+                        && self
+                            .current_function_kind
+                            .as_ref()
+                            .is_some_and(|k| k.is_query())
+                    {
+                        self.analysis.non_deterministic_calls.push(CallLocation {
+                            line,
+                            col,
+                            detail: "Math.random()".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+
+        // 7. Detect ctx.db.patch(id, args) — raw arg patching
+        if Self::is_ctx_call(&it.callee) {
+            if let Some(chain) = Self::resolve_member_chain(&it.callee) {
+                if chain.starts_with("ctx.db.patch") {
+                    if let Some(second_arg) = it.arguments.get(1) {
+                        if let Some(expr) = second_arg.as_expression() {
+                            if let Some(arg_chain) = Self::resolve_member_chain(expr) {
+                                if arg_chain == "args" {
+                                    self.analysis.raw_arg_patches.push(CallLocation {
+                                        line,
+                                        col,
+                                        detail: "ctx.db.patch(id, args) passes raw args"
+                                            .to_string(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8. Detect HTTP .route() calls with { method, path } config
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if mem.property.name.as_str() == "route" {
+                if let Some(first_arg) = it.arguments.first() {
+                    if let Some(Expression::ObjectExpression(obj)) = first_arg.as_expression() {
+                        let mut method = None;
+                        let mut path = None;
+                        for prop in &obj.properties {
+                            if let ObjectPropertyKind::ObjectProperty(p) = prop {
+                                if let Some(key_name) = p.key.static_name() {
+                                    match key_name.as_ref() {
+                                        "method" => {
+                                            if let Expression::StringLiteral(s) = &p.value {
+                                                method =
+                                                    Some(s.value.as_str().to_string());
+                                            }
+                                        }
+                                        "path" | "pathPrefix" => {
+                                            if let Expression::StringLiteral(s) = &p.value {
+                                                path =
+                                                    Some(s.value.as_str().to_string());
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                        }
+                        if let (Some(m), Some(p)) = (method, path) {
+                            self.analysis.http_routes.push(HttpRoute {
+                                method: m,
+                                path: p,
+                                line,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 9. Detect v.id("tableName") for schema_id_fields tracking
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if let Expression::Identifier(ident) = &mem.object {
+                if ident.name.as_str() == "v" && mem.property.name.as_str() == "id" {
+                    if let Some(first_arg) = it.arguments.first() {
+                        if let Some(Expression::StringLiteral(s)) = first_arg.as_expression() {
+                            let table_ref = s.value.as_str().to_string();
+                            self.analysis.schema_id_fields.push(SchemaIdField {
+                                field_name: format!("v.id(\"{}\")", table_ref),
+                                table_ref,
+                                line,
+                                col,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 10. Detect .filter() on ctx.db chains and extract q.field("name") patterns
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if mem.property.name.as_str() == "filter" {
+                let full_chain = Self::resolve_member_chain(&it.callee).unwrap_or_default();
+                if full_chain.contains("ctx.db") {
+                    // Try to extract field names from the filter callback
+                    if let Some(first_arg) = it.arguments.first() {
+                        if let Some(expr) = first_arg.as_expression() {
+                            let field_names = Self::extract_filter_field_names(expr);
+                            for field_name in field_names {
+                                self.analysis.filter_field_names.push(FilterField {
+                                    field_name,
+                                    line,
+                                    col,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 11. Detect .searchIndex("name", { searchField, filterFields }) calls
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if mem.property.name.as_str() == "searchIndex" && it.arguments.len() >= 2 {
+                let table = Self::get_index_table_id(&it.callee).unwrap_or_default();
+                let index_name = it.arguments.first().and_then(|arg| {
+                    arg.as_expression().and_then(|e| {
+                        if let Expression::StringLiteral(s) = e {
+                            Some(s.value.as_str().to_string())
+                        } else {
+                            None
+                        }
+                    })
+                });
+                let has_filter_fields = it.arguments.get(1).is_some_and(|arg| {
+                    arg.as_expression().is_some_and(|e| {
+                        if let Expression::ObjectExpression(obj) = e {
+                            obj.properties.iter().any(|p| {
+                                if let ObjectPropertyKind::ObjectProperty(prop) = p {
+                                    prop.key
+                                        .static_name()
+                                        .is_some_and(|n| n.as_ref() == "filterFields")
+                                } else {
+                                    false
+                                }
+                            })
+                        } else {
+                            false
+                        }
+                    })
+                });
+                if let Some(name) = index_name {
+                    self.analysis.search_index_definitions.push(SearchIndexDef {
+                        table,
+                        name,
+                        has_filter_fields,
+                        line,
+                    });
+                }
+            }
+        }
+
+        // 12. Detect v.optional() calls
+        if let Expression::StaticMemberExpression(mem) = &it.callee {
+            if let Expression::Identifier(ident) = &mem.object {
+                if ident.name.as_str() == "v" && mem.property.name.as_str() == "optional" {
+                    self.analysis.optional_schema_fields.push(CallLocation {
+                        line,
+                        col,
+                        detail: "v.optional()".to_string(),
+                    });
+                }
+            }
+        }
+
+        // 13. Detect large writes: ctx.db.insert/ctx.db.replace with >20 properties
+        if Self::is_ctx_call(&it.callee) {
+            if let Some(chain) = Self::resolve_member_chain(&it.callee) {
+                if chain.starts_with("ctx.db.insert") || chain.starts_with("ctx.db.replace") {
+                    // Check the appropriate arg — for insert it's the 2nd arg (index 1),
+                    // for replace it's also the 2nd arg
+                    let data_arg = it.arguments.get(1);
+                    if let Some(arg) = data_arg {
+                        if let Some(Expression::ObjectExpression(obj)) = arg.as_expression() {
+                            let prop_count = obj.properties.len();
+                            if prop_count > 20 {
+                                self.analysis.large_writes.push(CallLocation {
+                                    line,
+                                    col,
+                                    detail: format!(
+                                        "{} with {} properties",
+                                        chain, prop_count
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 15. Detect Convex hook calls: useMutation, useQuery, useAction
+        if let Expression::Identifier(ident) = &it.callee {
+            let name = ident.name.as_str();
+            if matches!(name, "useMutation" | "useQuery" | "useAction") {
+                self.analysis.convex_hook_calls.push(ConvexHookCall {
+                    hook_name: name.to_string(),
+                    line,
+                    col,
+                    in_render_body: self.function_builder_stack.is_empty(),
+                });
+            }
+        }
+
         walk::walk_call_expression(self, it);
 
         if started_exported_function {
@@ -677,5 +1126,80 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
             }
         }
         walk::walk_string_literal(self, it);
+    }
+
+    // 2b. Detect `new Date()` in query function context
+    fn visit_new_expression(&mut self, it: &NewExpression<'a>) {
+        if let Expression::Identifier(ident) = &it.callee {
+            if ident.name.as_str() == "Date"
+                && self
+                    .current_function_kind
+                    .as_ref()
+                    .is_some_and(|k| k.is_query())
+            {
+                let (line, col) = self.line_col(it.span.start);
+                self.analysis.non_deterministic_calls.push(CallLocation {
+                    line,
+                    col,
+                    detail: "new Date()".to_string(),
+                });
+            }
+        }
+        walk::walk_new_expression(self, it);
+    }
+
+    // 3. Detect `throw new Error(...)` in Convex function handlers
+    fn visit_throw_statement(&mut self, it: &ThrowStatement<'a>) {
+        if !self.function_builder_stack.is_empty() {
+            if let Expression::NewExpression(new_expr) = &it.argument {
+                if let Expression::Identifier(ident) = &new_expr.callee {
+                    if ident.name.as_str() == "Error" {
+                        let (line, col) = self.line_col(it.span.start);
+                        self.analysis.throw_generic_errors.push(CallLocation {
+                            line,
+                            col,
+                            detail: "throw new Error() — use ConvexError for client-visible errors"
+                                .to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        walk::walk_throw_statement(self, it);
+    }
+
+    // 14. Track unexported function declarations and variable declarations
+    //     that appear outside of export statements for unexported_function_count
+    fn visit_statement(&mut self, it: &Statement<'a>) {
+        match it {
+            // Standalone function declaration (not inside export)
+            Statement::FunctionDeclaration(_) => {
+                if self.current_export_names.is_empty()
+                    && self.function_builder_stack.is_empty()
+                {
+                    self.analysis.unexported_function_count += 1;
+                }
+            }
+            // Standalone variable declaration with arrow/function expression init
+            Statement::VariableDeclaration(var_decl) => {
+                if self.current_export_names.is_empty()
+                    && self.function_builder_stack.is_empty()
+                {
+                    for declarator in &var_decl.declarations {
+                        if let Some(init) = &declarator.init {
+                            if matches!(
+                                init,
+                                Expression::ArrowFunctionExpression(_)
+                                    | Expression::FunctionExpression(_)
+                            ) {
+                                self.analysis.unexported_function_count += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        walk::walk_statement(self, it);
     }
 }
