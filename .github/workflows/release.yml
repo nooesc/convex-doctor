@@ -34,7 +34,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
             artifact: convex-doctor-aarch64-linux
             cross: true
-          - os: macos-13
+          - os: macos-latest
             target: x86_64-apple-darwin
             artifact: convex-doctor-x86_64-darwin
           - os: macos-latest
