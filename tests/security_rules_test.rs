@@ -71,3 +71,14 @@ fn test_hardcoded_secrets() {
         "Should detect hardcoded secret"
     );
 }
+
+#[test]
+fn test_spoofable_access_control_detected() {
+    let analysis = analyze_file(Path::new("tests/fixtures/spoofable_access.ts")).unwrap();
+    let rule = SpoofableAccessControl;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "Should detect suspicious auth args without ctx.auth checks"
+    );
+}

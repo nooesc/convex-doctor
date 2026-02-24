@@ -198,9 +198,6 @@ impl Rule for EnvNotGitignored {
     }
 }
 
-/// Stub: detect access control based on spoofable client arguments.
-/// TODO: Implement detection of functions that use args like `userId`, `role`,
-/// `isAdmin` for access control decisions without verifying via ctx.auth.
 pub struct SpoofableAccessControl;
 impl Rule for SpoofableAccessControl {
     fn id(&self) -> &'static str {
@@ -209,9 +206,59 @@ impl Rule for SpoofableAccessControl {
     fn category(&self) -> Category {
         Category::Security
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        // Stub: this rule requires deep data-flow analysis to detect reliably.
-        // Will be implemented in a future version.
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        const SENSITIVE_ARG_NAMES: &[&str] = &[
+            "userId",
+            "user_id",
+            "role",
+            "isAdmin",
+            "admin",
+            "ownerId",
+            "organizationId",
+            "orgId",
+            "teamId",
+            "accountId",
+            "permission",
+            "permissions",
+        ];
+
+        analysis
+            .functions
+            .iter()
+            .filter(|f| f.is_public() && !f.has_auth_check)
+            .filter_map(|f| {
+                let risky_args: Vec<&str> = f
+                    .arg_names
+                    .iter()
+                    .filter_map(|arg| {
+                        let arg_name = arg.as_str();
+                        SENSITIVE_ARG_NAMES
+                            .iter()
+                            .find(|candidate| arg_name.eq_ignore_ascii_case(candidate))
+                            .copied()
+                    })
+                    .collect();
+
+                if risky_args.is_empty() {
+                    return None;
+                }
+
+                Some(Diagnostic {
+                    rule: self.id().to_string(),
+                    severity: Severity::Warning,
+                    category: self.category(),
+                    message: format!(
+                        "Public {} `{}` appears to use spoofable access-control args: {}",
+                        f.kind_str(),
+                        f.name,
+                        risky_args.join(", ")
+                    ),
+                    help: "Avoid authorizing requests using client-provided role/user identifiers. Verify access with `ctx.auth.getUserIdentity()` and server-side ownership checks.".to_string(),
+                    file: analysis.file_path.clone(),
+                    line: f.span_line,
+                    column: f.span_col,
+                })
+            })
+            .collect()
     }
 }
