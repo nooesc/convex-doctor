@@ -126,3 +126,32 @@ export const getMessages = query({
         "Wildcard .gitignore pattern should suppress env-not-gitignored diagnostic"
     );
 }
+
+#[test]
+fn test_engine_reports_parse_errors_as_diagnostics() {
+    let dir = TempDir::new().unwrap();
+    let convex_dir = dir.path().join("convex");
+    std::fs::create_dir(&convex_dir).unwrap();
+    std::fs::write(
+        convex_dir.join("broken.ts"),
+        r#"
+import { query } from "convex/server";
+
+export const bad = query({
+  handler: async (ctx) => {
+    return ctx.db.query("items").collect(
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let result = convex_doctor::engine::run(dir.path(), false, None).unwrap();
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .any(|d| d.rule == "correctness/file-parse-error"),
+        "Parse failures should surface in diagnostics output"
+    );
+}

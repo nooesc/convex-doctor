@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 
 use crate::config::Config;
-use crate::diagnostic::Diagnostic;
+use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::project::ProjectInfo;
 use crate::rules::context::analyze_file;
 use crate::rules::{ProjectContext, RuleRegistry};
@@ -55,22 +55,41 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
     let files_scanned = files.len();
 
     // Analyze all files in parallel
-    let analyses: Vec<_> = files
+    let analyzed_results: Vec<_> = files
         .par_iter()
-        .filter_map(|file| match analyze_file(file) {
-            Ok(a) => Some(a),
+        .map(|file| (file, analyze_file(file)))
+        .collect();
+
+    let mut analyses = Vec::new();
+    let mut parse_diagnostics = Vec::new();
+    for (file, result) in analyzed_results {
+        match result {
+            Ok(analysis) => analyses.push(analysis),
             Err(e) => {
                 eprintln!("Warning: {e}");
-                None
+                if config.is_rule_enabled("correctness/file-parse-error") {
+                    parse_diagnostics.push(Diagnostic {
+                        rule: "correctness/file-parse-error".to_string(),
+                        severity: Severity::Error,
+                        category: Category::Correctness,
+                        message: format!("Failed to parse file `{}`", file.display()),
+                        help: "Fix syntax or parser-incompatible constructs in this file so all rules can run."
+                            .to_string(),
+                        file: file.display().to_string(),
+                        line: 0,
+                        column: 0,
+                    });
+                }
             }
-        })
-        .collect();
+        }
+    }
 
     // Run per-file rules in parallel
     let mut all_diagnostics: Vec<Diagnostic> = analyses
         .par_iter()
         .flat_map(|analysis| registry.run(analysis, &|rule_id| config.is_rule_enabled(rule_id)))
         .collect();
+    all_diagnostics.extend(parse_diagnostics);
 
     // Project-level checks are intentionally skipped in diff mode because
     // they are global and not attributable to changed files.
