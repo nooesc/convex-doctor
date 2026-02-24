@@ -6,22 +6,30 @@ Diagnose your Convex backend for anti-patterns, security issues, and performance
 
 ## Benchmarks
 
-Tested against popular open-source Convex projects:
+Tested against 18 open-source Convex applications, including hackathon winners:
 
 | Project | Stars | Score | Errors | Warnings | Info | Total |
 |---------|------:|------:|-------:|---------:|-----:|------:|
-| [replicate](https://github.com/trestleinc/replicate) | 196 | 88/100 | 3 | 15 | 0 | 18 |
-| [convex-helpers](https://github.com/get-convex/convex-helpers) | 430 | 81/100 | 3 | 68 | 8 | 79 |
+| [google-docs](https://github.com/Davronov-Alimardon/google-docs) | 73 | 94/100 | 0 | 15 | 2 | 17 |
+| [Ai-Website-Builder](https://github.com/Ratna-Babu/Ai-Website-Builder) | 122 | 92/100 | 0 | 15 | 1 | 16 |
+| [miro-clone](https://github.com/sanidhyy/miro-clone) | 82 | 89/100 | 3 | 18 | 13 | 34 |
+| [replicate](https://github.com/trestleinc/replicate) | 197 | 88/100 | 3 | 15 | 0 | 18 |
+| [livecanvas](https://github.com/kaifcoder/livecanvas) | 192 | 84/100 | 3 | 31 | 0 | 34 |
+| [quizzex](https://github.com/AnsellMaximilian/quizzex) | 1 | 83/100 | 3 | 65 | 4 | 72 |
 | [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 77/100 | 12 | 63 | 6 | 81 |
 | [convex-saas](https://github.com/get-convex/convex-saas) | 338 | 76/100 | 5 | 51 | 26 | 82 |
+| [convjobs](https://github.com/mithileshchellappan/convjobs) | 2 | 76/100 | 6 | 58 | 4 | 68 |
+| [BloxAI](https://github.com/subhadeeproy3902/BloxAI) | 91 | 76/100 | 9 | 81 | 0 | 90 |
+| [notion-clone](https://github.com/adityaphasu/notion-clone) | 141 | 76/100 | 10 | 38 | 28 | 76 |
 | [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 615 | 69/100 | 12 | 39 | 4 | 55 |
 | [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 210 | 64/100 | 22 | 131 | 20 | 173 |
 | [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 56/100 | 49 | 188 | 15 | 252 |
+| [travel-planner-ai](https://github.com/hardikverma22/travel-planner-ai) | 241 | 55/100 | 28 | 173 | 9 | 210 |
 | [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 315 | 55/100 | 50 | 192 | 120 | 362 |
 | [opensync](https://github.com/waynesutton/opensync) | 301 | 48/100 | 70 | 277 | 58 | 405 |
 | [markdown-site](https://github.com/waynesutton/markdown-site) | 547 | 36/100 | 77 | 316 | 48 | 441 |
 
-*Benchmarks run on Feb 24, 2026 against each project's `main` branch.*
+*Benchmarks run on Feb 24, 2026 against each project's `main` branch. Sorted by score.*
 
 ## Quick start
 
