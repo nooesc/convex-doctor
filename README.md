@@ -40,6 +40,7 @@ convex-doctor --score
 
 # Diff mode: only analyze files changed vs a base branch
 convex-doctor --diff main
+# Note: diff mode only runs file-level rules on changed files.
 
 # Scan a specific project path
 convex-doctor /path/to/my-project
