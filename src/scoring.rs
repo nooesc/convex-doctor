@@ -28,7 +28,7 @@ pub fn compute_score(diagnostics: &[Diagnostic]) -> ScoreResult {
         .map(|(raw, cap)| raw.min(*cap))
         .sum();
 
-    let score_f64 = (100.0 - total_deduction).max(0.0).min(100.0);
+    let score_f64 = (100.0 - total_deduction).clamp(0.0, 100.0);
     let value = score_f64.round() as u32;
 
     let label = match value {

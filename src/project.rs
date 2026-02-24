@@ -17,14 +17,11 @@ impl ProjectInfo {
     pub fn detect(root: &Path) -> Result<Self, String> {
         let convex_dir = root.join("convex");
         if !convex_dir.is_dir() {
-            return Err(format!(
-                "No convex/ directory found in {}",
-                root.display()
-            ));
+            return Err(format!("No convex/ directory found in {}", root.display()));
         }
 
-        let has_schema = convex_dir.join("schema.ts").exists()
-            || convex_dir.join("schema.js").exists();
+        let has_schema =
+            convex_dir.join("schema.ts").exists() || convex_dir.join("schema.js").exists();
         let has_auth_config = convex_dir.join("auth.config.ts").exists()
             || convex_dir.join("auth.config.js").exists();
         let has_convex_json = root.join("convex.json").exists();
@@ -80,8 +77,7 @@ impl ProjectInfo {
         dev_deps: Option<&serde_json::Map<String, serde_json::Value>>,
         name: &str,
     ) -> bool {
-        deps.is_some_and(|d| d.contains_key(name))
-            || dev_deps.is_some_and(|d| d.contains_key(name))
+        deps.is_some_and(|d| d.contains_key(name)) || dev_deps.is_some_and(|d| d.contains_key(name))
     }
 
     pub fn discover_files(&self, config: &Config) -> Vec<PathBuf> {
@@ -104,10 +100,10 @@ impl ProjectInfo {
                 }
                 Self::walk_dir(&path, config, files);
             } else if let Some(ext) = path.extension() {
-                if matches!(ext.to_str(), Some("ts" | "tsx" | "js" | "jsx")) {
-                    if !config.is_file_ignored(&path) {
-                        files.push(path);
-                    }
+                if matches!(ext.to_str(), Some("ts" | "tsx" | "js" | "jsx"))
+                    && !config.is_file_ignored(&path)
+                {
+                    files.push(path);
                 }
             }
         }

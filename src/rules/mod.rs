@@ -153,28 +153,31 @@ pub struct RuleRegistry {
     rules: Vec<Box<dyn Rule>>,
 }
 
+impl Default for RuleRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RuleRegistry {
     pub fn new() -> Self {
-        let mut rules: Vec<Box<dyn Rule>> = Vec::new();
-
-        rules.push(Box::new(security::MissingArgValidators));
-        rules.push(Box::new(security::MissingReturnValidators));
-        rules.push(Box::new(security::MissingAuthCheck));
-        rules.push(Box::new(security::InternalApiMisuse));
-        rules.push(Box::new(security::HardcodedSecrets));
-
-        rules.push(Box::new(performance::UnboundedCollect));
-        rules.push(Box::new(performance::FilterWithoutIndex));
-        rules.push(Box::new(performance::DateNowInQuery));
-        rules.push(Box::new(performance::LoopRunMutation));
-
-        rules.push(Box::new(correctness::UnwaitedPromise));
-        rules.push(Box::new(correctness::OldFunctionSyntax));
-        rules.push(Box::new(correctness::DbInAction));
-        rules.push(Box::new(correctness::DeprecatedApi));
-
-        rules.push(Box::new(architecture::LargeHandler));
-        rules.push(Box::new(architecture::MonolithicFile));
+        let rules: Vec<Box<dyn Rule>> = vec![
+            Box::new(security::MissingArgValidators),
+            Box::new(security::MissingReturnValidators),
+            Box::new(security::MissingAuthCheck),
+            Box::new(security::InternalApiMisuse),
+            Box::new(security::HardcodedSecrets),
+            Box::new(performance::UnboundedCollect),
+            Box::new(performance::FilterWithoutIndex),
+            Box::new(performance::DateNowInQuery),
+            Box::new(performance::LoopRunMutation),
+            Box::new(correctness::UnwaitedPromise),
+            Box::new(correctness::OldFunctionSyntax),
+            Box::new(correctness::DbInAction),
+            Box::new(correctness::DeprecatedApi),
+            Box::new(architecture::LargeHandler),
+            Box::new(architecture::MonolithicFile),
+        ];
 
         RuleRegistry { rules }
     }

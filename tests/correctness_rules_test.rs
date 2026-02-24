@@ -16,7 +16,9 @@ fn test_unwaited_promise() {
 fn test_deprecated_api() {
     let dir = tempfile::TempDir::new().unwrap();
     let path = dir.path().join("deprecated.ts");
-    std::fs::write(&path, r#"
+    std::fs::write(
+        &path,
+        r#"
 import { mutation } from "convex/server";
 import { v } from "convex/values";
 
@@ -24,10 +26,15 @@ export const create = mutation({
   args: { count: v.bigint() },
   handler: async (ctx, args) => {},
 });
-"#).unwrap();
+"#,
+    )
+    .unwrap();
 
     let analysis = analyze_file(&path).unwrap();
     let rule = DeprecatedApi;
     let diagnostics = rule.check(&analysis);
-    assert!(diagnostics.iter().any(|d| d.message.contains("v.bigint()")), "Should detect deprecated v.bigint()");
+    assert!(
+        diagnostics.iter().any(|d| d.message.contains("v.bigint()")),
+        "Should detect deprecated v.bigint()"
+    );
 }

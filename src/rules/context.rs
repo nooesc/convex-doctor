@@ -228,17 +228,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 };
 
                 // Check the first argument for the config object
-                if let Some(first_arg) = it.arguments.first() {
-                    if let Argument::ObjectExpression(obj) = first_arg {
-                        // Inspect config properties before walking
-                        for prop in &obj.properties {
-                            if let ObjectPropertyKind::ObjectProperty(prop) = prop {
-                                if let Some(name) = prop.key.static_name() {
-                                    match name.as_ref() {
-                                        "args" => builder.has_args_validator = true,
-                                        "returns" => builder.has_return_validator = true,
-                                        _ => {}
-                                    }
+                if let Some(Argument::ObjectExpression(obj)) = it.arguments.first() {
+                    // Inspect config properties before walking
+                    for prop in &obj.properties {
+                        if let ObjectPropertyKind::ObjectProperty(prop) = prop {
+                            if let Some(name) = prop.key.static_name() {
+                                match name.as_ref() {
+                                    "args" => builder.has_args_validator = true,
+                                    "returns" => builder.has_return_validator = true,
+                                    _ => {}
                                 }
                             }
                         }
@@ -293,8 +291,13 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     let prop = mem.property.name.as_str();
                     let deprecated = match prop {
                         "bigint" => Some(("v.bigint()", "Use v.int64() instead")),
-                        "bytes" => Some(("v.bytes()", "Use v.string() with base64 encoding instead")),
-                        "any" => Some(("v.any()", "Use a specific validator type for better type safety")),
+                        "bytes" => {
+                            Some(("v.bytes()", "Use v.string() with base64 encoding instead"))
+                        }
+                        "any" => Some((
+                            "v.any()",
+                            "Use a specific validator type for better type safety",
+                        )),
                         _ => None,
                     };
                     if let Some((name, replacement)) = deprecated {
@@ -315,7 +318,8 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 // Track ctx call
                 // Extract first_arg_chain from the first argument
                 let first_arg_chain = it.arguments.first().and_then(|arg| {
-                    arg.as_expression().and_then(|expr| Self::resolve_member_chain(expr))
+                    arg.as_expression()
+                        .and_then(|expr| Self::resolve_member_chain(expr))
                 });
 
                 let ctx_call = CtxCall {

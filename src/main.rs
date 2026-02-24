@@ -7,7 +7,11 @@ use convex_doctor::reporter::json::JsonReporter;
 use convex_doctor::reporter::Reporter;
 
 #[derive(Parser)]
-#[command(name = "convex-doctor", version, about = "Diagnose your Convex backend")]
+#[command(
+    name = "convex-doctor",
+    version,
+    about = "Diagnose your Convex backend"
+)]
 struct Cli {
     /// Path to the project root (defaults to current directory)
     #[arg(default_value = ".")]

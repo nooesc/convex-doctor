@@ -8,7 +8,10 @@ fn test_unbounded_collect() {
     let analysis = analyze_file(Path::new("tests/fixtures/bad_patterns.ts")).unwrap();
     let rule = UnboundedCollect;
     let diagnostics = rule.check(&analysis);
-    assert!(!diagnostics.is_empty(), "Should detect unbounded .collect()");
+    assert!(
+        !diagnostics.is_empty(),
+        "Should detect unbounded .collect()"
+    );
 }
 
 #[test]
@@ -24,7 +27,10 @@ fn test_date_now_in_query() {
     let analysis = analyze_file(Path::new("tests/fixtures/bad_patterns.ts")).unwrap();
     let rule = DateNowInQuery;
     let diagnostics = rule.check(&analysis);
-    assert!(!diagnostics.is_empty(), "Should detect Date.now() in query file");
+    assert!(
+        !diagnostics.is_empty(),
+        "Should detect Date.now() in query file"
+    );
 }
 
 #[test]
@@ -32,5 +38,8 @@ fn test_loop_run_mutation() {
     let analysis = analyze_file(Path::new("tests/fixtures/bad_patterns.ts")).unwrap();
     let rule = LoopRunMutation;
     let diagnostics = rule.check(&analysis);
-    assert!(!diagnostics.is_empty(), "Should detect ctx.runMutation in loop");
+    assert!(
+        !diagnostics.is_empty(),
+        "Should detect ctx.runMutation in loop"
+    );
 }

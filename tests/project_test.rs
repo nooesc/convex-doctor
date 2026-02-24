@@ -52,5 +52,7 @@ fn test_discover_convex_files() {
     let info = ProjectInfo::detect(dir.path()).unwrap();
     let files = info.discover_files(&convex_doctor::config::Config::default());
     assert_eq!(files.len(), 2);
-    assert!(files.iter().all(|f| !f.to_string_lossy().contains("_generated")));
+    assert!(files
+        .iter()
+        .all(|f| !f.to_string_lossy().contains("_generated")));
 }

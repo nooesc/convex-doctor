@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub rules: HashMap<String, String>,
@@ -16,20 +16,10 @@ pub struct IgnoreConfig {
     pub files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct CiConfig {
     pub fail_below: u32,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            rules: HashMap::new(),
-            ignore: IgnoreConfig::default(),
-            ci: CiConfig::default(),
-        }
-    }
 }
 
 impl Default for IgnoreConfig {
@@ -37,12 +27,6 @@ impl Default for IgnoreConfig {
         IgnoreConfig {
             files: vec!["convex/_generated/**".to_string()],
         }
-    }
-}
-
-impl Default for CiConfig {
-    fn default() -> Self {
-        CiConfig { fail_below: 0 }
     }
 }
 
@@ -60,10 +44,7 @@ impl Config {
     }
 
     pub fn is_rule_enabled(&self, rule_id: &str) -> bool {
-        match self.rules.get(rule_id) {
-            Some(v) if v == "off" => false,
-            _ => true,
-        }
+        !matches!(self.rules.get(rule_id), Some(v) if v == "off")
     }
 
     pub fn is_file_ignored(&self, file_path: &Path) -> bool {
