@@ -8,7 +8,7 @@ Diagnose your Convex backend for anti-patterns, security issues, and performance
 
 ## Benchmarks
 
-Tested against 18 open-source Convex applications, including hackathon winners:
+Tested against 18 open-source Convex applications
 
 | Project | Stars | Score | Errors | Warnings | Info | Total |
 |---------|------:|------:|-------:|---------:|-----:|------:|
