@@ -69,7 +69,7 @@ convex-doctor runs 30 rules organized into 6 categories. Each category carries a
 | `security/internal-api-misuse` | error | Server-to-server calls using `api.*` instead of `internal.*` |
 | `security/hardcoded-secrets` | error | API keys, tokens, or secrets hardcoded in source |
 | `security/env-not-gitignored` | error | `.env.local` exists but is not in `.gitignore` |
-| `security/spoofable-access-control` | warning | Access control based on spoofable client arguments (stub) |
+| `security/spoofable-access-control` | warning | Access control logic that appears to trust spoofable client arguments (e.g. `userId`, `role`) without auth checks |
 | `perf/unbounded-collect` | error | `.collect()` without `.take(n)` limit |
 | `perf/filter-without-index` | warning | `.filter()` calls that scan entire tables |
 | `perf/date-now-in-query` | error | `Date.now()` in query functions (breaks caching) |
@@ -81,8 +81,8 @@ convex-doctor runs 30 rules organized into 6 categories. Each category carries a
 | `correctness/old-function-syntax` | warning | Legacy function registration syntax |
 | `correctness/db-in-action` | error | Direct `ctx.db.*` calls inside actions |
 | `correctness/deprecated-api` | warning | Usage of deprecated Convex APIs |
-| `correctness/wrong-runtime-import` | warning | Imports across incompatible Convex runtimes (stub) |
-| `correctness/direct-function-ref` | warning | Direct function references instead of `api.*` references (stub) |
+| `correctness/wrong-runtime-import` | warning | Node-only or browser-only imports used from an incompatible Convex runtime context |
+| `correctness/direct-function-ref` | warning | Direct function references passed to `ctx.run*` instead of generated `api.*`/`internal.*` references |
 | `correctness/missing-unique` | warning | `.first()` on indexed query where `.unique()` may be more appropriate |
 | `schema/missing-schema` | warning | No `schema.ts` file found in `convex/` directory |
 | `schema/deep-nesting` | warning | Schema validators nested more than 3 levels deep |
