@@ -2,7 +2,27 @@
 
 Diagnose your Convex backend for anti-patterns, security issues, and performance problems.
 
-`convex-doctor` is a static analysis CLI for [Convex](https://convex.dev) projects. It parses your `convex/` directory, runs 30 rules across 6 categories, and produces a weighted 0-100 health score. Think of it as ESLint, but purpose-built for Convex backends.
+`convex-doctor` is a static analysis CLI for [Convex](https://convex.dev) projects. It parses your `convex/` directory, runs **65 rules across 7 categories**, and produces a weighted 0-100 health score. Think of it as ESLint, but purpose-built for Convex backends.
+
+## Benchmarks
+
+Tested against popular open-source Convex projects:
+
+| Project | Stars | Score | Errors | Warnings | Info | Total |
+|---------|------:|------:|-------:|---------:|-----:|------:|
+| [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 35/100 | 12 | 63 | 6 | 81 |
+| [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 615 | 18/100 | 12 | 39 | 4 | 55 |
+| [markdown-site](https://github.com/waynesutton/markdown-site) | 547 | 0/100 | 77 | 316 | 48 | 441 |
+| [convex-helpers](https://github.com/get-convex/convex-helpers) | 430 | 49/100 | 3 | 68 | 8 | 79 |
+| [better-convex](https://github.com/udecode/better-convex) | 363 | 81/100 | 6 | 1 | 0 | 7 |
+| [convex-saas](https://github.com/get-convex/convex-saas) | 338 | 42/100 | 5 | 51 | 26 | 82 |
+| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 315 | 0/100 | 50 | 192 | 120 | 362 |
+| [opensync](https://github.com/waynesutton/opensync) | 301 | 0/100 | 70 | 277 | 58 | 405 |
+| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 210 | 3/100 | 22 | 131 | 20 | 173 |
+| [replicate](https://github.com/trestleinc/replicate) | 196 | 70/100 | 3 | 15 | 0 | 18 |
+| [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 0/100 | 49 | 188 | 15 | 252 |
+
+*Benchmarks run on Feb 24, 2026 against each project's `main` branch.*
 
 ## Quick start
 
@@ -15,7 +35,7 @@ cargo install convex-doctor
 ### Build from source
 
 ```sh
-git clone https://github.com/coler/convex-doctor.git
+git clone https://github.com/nooesc/convex-doctor.git
 cd convex-doctor
 cargo build --release
 # Binary is at ./target/release/convex-doctor
@@ -48,18 +68,22 @@ convex-doctor /path/to/my-project
 
 ## Rules
 
-convex-doctor runs 30 rules organized into 6 categories. Each category carries a different weight in the final score.
+convex-doctor runs **65 rules** organized into **7 categories**. Each category carries a different weight in the final score.
 
 | Category | Weight | Rules | Description |
 |---|---|---|---|
-| **Security** | 1.5x | 7 | Argument/return validators, auth checks, internal API misuse, hardcoded secrets, env files, access control |
-| **Performance** | 1.2x | 7 | Unbounded collect, filter without index, Date.now() in queries, loop mutations, sequential runs, action-in-action, helper vs run |
-| **Correctness** | 1.5x | 7 | Unwaited promises, old function syntax, db access in actions, deprecated APIs, runtime imports, function refs, missing unique |
-| **Schema** | 1.0x | 4 | Missing schema, deep nesting, array relationships, redundant indexes |
-| **Architecture** | 0.8x | 3 | Large handler functions, monolithic files, duplicated auth patterns |
-| **Configuration** | 1.0x | 2 | Missing convex.json, missing auth config |
+| **Security** | 1.5x | 13 | Arg/return validators, auth checks, internal API misuse, secrets, CORS, access control, generic args |
+| **Performance** | 1.2x | 12 | Unbounded collect, missing indexes, Date.now() in queries, loop mutations, N+1 patterns, pagination |
+| **Correctness** | 1.5x | 15 | Unwaited promises, deprecated APIs, side effects in queries, scheduler issues, non-determinism |
+| **Schema** | 1.0x | 8 | Missing schema, deep nesting, redundant indexes, search index filters, optional field handling |
+| **Architecture** | 0.8x | 8 | Large handlers, monolithic files, function chains, mixed types, missing helpers |
+| **Configuration** | 1.0x | 5 | Missing convex.json, auth config, generated code, tsconfig, node version |
+| **Client-Side** | 1.0x | 4 | Mutation in render, unhandled loading states, missing ConvexProvider |
 
 ### Rule reference
+
+<details>
+<summary><strong>Security</strong> (13 rules)</summary>
 
 | Rule ID | Severity | What it detects |
 |---|---|---|
@@ -69,7 +93,21 @@ convex-doctor runs 30 rules organized into 6 categories. Each category carries a
 | `security/internal-api-misuse` | error | Server-to-server calls using `api.*` instead of `internal.*` |
 | `security/hardcoded-secrets` | error | API keys, tokens, or secrets hardcoded in source |
 | `security/env-not-gitignored` | error | `.env.local` exists but is not in `.gitignore` |
-| `security/spoofable-access-control` | warning | Access control logic that appears to trust spoofable client arguments (e.g. `userId`, `role`) without auth checks |
+| `security/spoofable-access-control` | warning | Access control trusting spoofable client args (e.g. `userId`, `role`) |
+| `security/missing-table-id` | warning | Using string IDs instead of `v.id("table")` for document references |
+| `security/missing-http-auth` | error | HTTP action endpoints without authentication checks |
+| `security/conditional-function-export` | warning | Convex functions conditionally exported based on environment |
+| `security/generic-mutation-args` | warning | Public mutations using `v.any()` in argument validators |
+| `security/overly-broad-patch` | warning | `ctx.db.patch` with spread args that bypass validation |
+| `security/http-missing-cors` | warning | HTTP routes without CORS headers |
+
+</details>
+
+<details>
+<summary><strong>Performance</strong> (12 rules)</summary>
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
 | `perf/unbounded-collect` | error | `.collect()` without `.take(n)` limit |
 | `perf/filter-without-index` | warning | `.filter()` calls that scan entire tables |
 | `perf/date-now-in-query` | error | `Date.now()` in query functions (breaks caching) |
@@ -77,22 +115,93 @@ convex-doctor runs 30 rules organized into 6 categories. Each category carries a
 | `perf/sequential-run-calls` | warning | Multiple sequential `ctx.run*` calls in an action |
 | `perf/unnecessary-run-action` | warning | `ctx.runAction` called from within an action |
 | `perf/helper-vs-run` | warning | `ctx.runQuery`/`ctx.runMutation` inside a query or mutation |
+| `perf/missing-index-on-foreign-key` | warning | `v.id("table")` field in schema without a corresponding index |
+| `perf/action-from-client` | warning | Client calling actions directly instead of mutations |
+| `perf/collect-then-filter` | warning | `.collect()` followed by JS `.filter()` instead of using DB query filters |
+| `perf/large-document-write` | warning | Inserting documents with 20+ fields in a single write |
+| `perf/no-pagination-for-list` | warning | Public query with `.collect()` returning unbounded results to client |
+
+</details>
+
+<details>
+<summary><strong>Correctness</strong> (15 rules)</summary>
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
 | `correctness/unwaited-promise` | error | `ctx.db.insert`, `ctx.runMutation`, etc. without `await` |
 | `correctness/old-function-syntax` | warning | Legacy function registration syntax |
 | `correctness/db-in-action` | error | Direct `ctx.db.*` calls inside actions |
-| `correctness/deprecated-api` | warning | Usage of deprecated Convex APIs |
-| `correctness/wrong-runtime-import` | warning | Node-only or browser-only imports used from an incompatible Convex runtime context |
-| `correctness/direct-function-ref` | warning | Direct function references passed to `ctx.run*` instead of generated `api.*`/`internal.*` references |
-| `correctness/missing-unique` | warning | `.first()` on indexed query where `.unique()` may be more appropriate |
+| `correctness/deprecated-api` | warning | Usage of deprecated Convex APIs (`v.bigint()`, `v.bytes()`) |
+| `correctness/wrong-runtime-import` | warning | Incompatible runtime imports (Node in edge, browser in server) |
+| `correctness/direct-function-ref` | warning | Direct function refs passed to `ctx.run*` instead of `api.*`/`internal.*` |
+| `correctness/missing-unique` | warning | `.first()` on indexed query where `.unique()` may be appropriate |
+| `correctness/query-side-effect` | error | Side effects (`ctx.db.insert/patch/delete`) inside query functions |
+| `correctness/mutation-in-query` | error | `ctx.runMutation` called from within a query function |
+| `correctness/cron-uses-public-api` | warning | Cron jobs referencing public `api.*` instead of `internal.*` |
+| `correctness/node-query-mutation` | warning | Queries/mutations using `"use node"` runtime unnecessarily |
+| `correctness/scheduler-return-ignored` | info | `ctx.scheduler.runAfter` return value not captured |
+| `correctness/non-deterministic-in-query` | warning | `Math.random()`, `new Date()`, `crypto` in query functions |
+| `correctness/replace-vs-patch` | info | `ctx.db.replace` used where `ctx.db.patch` may be safer |
+| `correctness/generated-code-modified` | warning | Generated files (`_generated/`) appear to be manually modified |
+
+</details>
+
+<details>
+<summary><strong>Schema</strong> (8 rules)</summary>
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
 | `schema/missing-schema` | warning | No `schema.ts` file found in `convex/` directory |
 | `schema/deep-nesting` | warning | Schema validators nested more than 3 levels deep |
 | `schema/array-relationships` | warning | `v.array(v.id(...))` patterns that may grow unbounded |
 | `schema/redundant-index` | warning | Index that is a prefix of another index on the same table |
+| `schema/too-many-indexes` | info | Table with 8+ indexes (limit is 32) |
+| `schema/missing-search-index-filter` | info | Search index without `filterFields` |
+| `schema/optional-field-no-default-handling` | warning | 5+ optional schema fields without undefined handling |
+| `schema/missing-index-for-query` | warning | Query filters on a field with no matching index |
+
+</details>
+
+<details>
+<summary><strong>Architecture</strong> (8 rules)</summary>
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
 | `arch/large-handler` | warning | Handler functions exceeding 50 lines |
 | `arch/monolithic-file` | warning | Files with more than 10 exported functions |
 | `arch/duplicated-auth` | warning | 3+ functions with inline auth checks in the same file |
+| `arch/action-without-scheduling` | info | Actions that could use `ctx.scheduler` instead of direct calls |
+| `arch/no-convex-error` | info | `throw new Error(...)` instead of `throw new ConvexError(...)` |
+| `arch/mixed-function-types` | info | File mixing public and internal function exports |
+| `arch/no-helper-functions` | info | Multiple large handlers with no shared helper functions |
+| `arch/deep-function-chain` | warning | Action with 5+ `ctx.run*` calls forming a deep chain |
+
+</details>
+
+<details>
+<summary><strong>Configuration</strong> (5 rules)</summary>
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
 | `config/missing-convex-json` | warning | No `convex.json` found in project root |
 | `config/missing-auth-config` | error | Functions use `ctx.auth` but no `auth.config.ts` exists |
+| `config/missing-generated-code` | warning | No `_generated/` directory found |
+| `config/outdated-node-version` | warning | Node version in config is outdated |
+| `config/missing-tsconfig` | info | No `tsconfig.json` found in convex directory |
+
+</details>
+
+<details>
+<summary><strong>Client-Side</strong> (4 rules)</summary>
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
+| `client/mutation-in-render` | error | `useMutation` called in React render body (infinite loop) |
+| `client/unhandled-loading-state` | warning | `useQuery` result used without checking for `undefined` loading state |
+| `client/action-instead-of-mutation` | info | `useAction` used where `useMutation` may suffice |
+| `client/missing-convex-provider` | info | Convex hooks used without `ConvexProvider` in component tree |
+
+</details>
 
 ## Scoring
 
@@ -202,7 +311,7 @@ If `fail_below` is set in the config, convex-doctor will exit with code 1 when t
 Contributions are welcome. To get started:
 
 ```sh
-git clone https://github.com/coler/convex-doctor.git
+git clone https://github.com/nooesc/convex-doctor.git
 cd convex-doctor
 cargo test
 cargo clippy -- -D warnings
