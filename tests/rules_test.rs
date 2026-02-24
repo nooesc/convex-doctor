@@ -42,7 +42,9 @@ fn test_project_level_missing_schema() {
         .flat_map(|r| r.check_project(&ctx))
         .collect();
     assert!(
-        diagnostics.iter().any(|d| d.rule == "schema/missing-schema"),
+        diagnostics
+            .iter()
+            .any(|d| d.rule == "schema/missing-schema"),
         "Should flag missing schema"
     );
 }
@@ -60,7 +62,9 @@ fn test_project_level_no_missing_schema_when_present() {
         .flat_map(|r| r.check_project(&ctx))
         .collect();
     assert!(
-        !diagnostics.iter().any(|d| d.rule == "schema/missing-schema"),
+        !diagnostics
+            .iter()
+            .any(|d| d.rule == "schema/missing-schema"),
         "Should not flag when schema exists"
     );
 }

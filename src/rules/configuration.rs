@@ -20,7 +20,8 @@ impl Rule for MissingConvexJson {
                 severity: Severity::Warning,
                 category: self.category(),
                 message: "No convex.json found in project root".to_string(),
-                help: "Create convex.json to configure your Convex deployment settings.".to_string(),
+                help: "Create convex.json to configure your Convex deployment settings."
+                    .to_string(),
                 file: ".".to_string(),
                 line: 0,
                 column: 0,

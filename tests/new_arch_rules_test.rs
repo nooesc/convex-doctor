@@ -1,5 +1,5 @@
-use convex_doctor::rules::context::analyze_file;
 use convex_doctor::rules::architecture::*;
+use convex_doctor::rules::context::analyze_file;
 use convex_doctor::rules::Rule;
 use std::path::Path;
 
@@ -12,8 +12,16 @@ fn test_duplicated_auth_detected() {
     assert!(
         !diagnostics.is_empty(),
         "Should detect 3+ functions with inline auth checks. Found {} functions with auth: {:?}",
-        analysis.functions.iter().filter(|f| f.has_auth_check).count(),
-        analysis.functions.iter().map(|f| format!("{}(auth={})", f.name, f.has_auth_check)).collect::<Vec<_>>()
+        analysis
+            .functions
+            .iter()
+            .filter(|f| f.has_auth_check)
+            .count(),
+        analysis
+            .functions
+            .iter()
+            .map(|f| format!("{}(auth={})", f.name, f.has_auth_check))
+            .collect::<Vec<_>>()
     );
 }
 
