@@ -54,17 +54,75 @@ impl Config {
             .map(|p| p.to_string_lossy().replace('\\', "/"))
             .unwrap_or_else(|_| absolute.clone());
         let relative_with_dot = format!("./{relative}");
+        let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
 
         for pattern in &self.ignore.files {
-            if let Ok(glob) = glob::Pattern::new(pattern) {
-                if glob.matches(&relative)
-                    || glob.matches(&relative_with_dot)
-                    || glob.matches(&absolute)
-                {
-                    return true;
+            for candidate in Self::glob_candidates(pattern) {
+                if let Ok(glob) = glob::Pattern::new(&candidate) {
+                    if glob.matches(&relative)
+                        || glob.matches(&relative_with_dot)
+                        || glob.matches(&absolute)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            let normalized = pattern.replace('\\', "/").trim().to_string();
+            if !normalized.contains('/') && !file_name.is_empty() {
+                if let Ok(basename_glob) = glob::Pattern::new(&normalized) {
+                    if basename_glob.matches(file_name) {
+                        return true;
+                    }
                 }
             }
         }
         false
+    }
+
+    fn glob_candidates(pattern: &str) -> Vec<String> {
+        let normalized = pattern.replace('\\', "/").trim().to_string();
+        if normalized.is_empty() {
+            return Vec::new();
+        }
+
+        let mut candidates = Vec::new();
+        let mut push = |candidate: String| {
+            if !candidate.is_empty() && !candidates.contains(&candidate) {
+                candidates.push(candidate);
+            }
+        };
+
+        push(normalized.clone());
+
+        if normalized.starts_with("./") {
+            push(normalized.trim_start_matches("./").to_string());
+        }
+
+        if normalized.starts_with('/') {
+            push(normalized.trim_start_matches('/').to_string());
+        }
+
+        if normalized.ends_with('/') {
+            let trimmed = normalized.trim_end_matches('/').to_string();
+            if !trimmed.is_empty() {
+                push(trimmed.clone());
+                push(format!("{trimmed}/**"));
+            }
+        }
+
+        let has_glob_meta = normalized.contains('*')
+            || normalized.contains('?')
+            || normalized.contains('[')
+            || normalized.contains(']');
+        if !normalized.ends_with('/') && normalized.contains('/') && !has_glob_meta {
+            push(format!("{normalized}/**"));
+        }
+
+        if !normalized.contains('/') {
+            push(format!("**/{normalized}"));
+        }
+
+        candidates
     }
 }

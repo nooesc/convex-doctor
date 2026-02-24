@@ -74,3 +74,25 @@ fn test_is_file_ignored_with_absolute_path() {
     let file = Path::new("/repo/convex/_generated/api.d.ts");
     assert!(config.is_file_ignored(root, file));
 }
+
+#[test]
+fn test_ignore_filename_wildcard_matches_subdirectories() {
+    let mut config = Config::default();
+    config.ignore.files = vec!["*.ts".to_string()];
+    assert!(config.is_file_ignored(Path::new("."), Path::new("convex/messages.ts")));
+    assert!(config.is_file_ignored(Path::new("."), Path::new("convex/helpers/inner.ts")));
+}
+
+#[test]
+fn test_ignore_directory_pattern_without_wildcard() {
+    let mut config = Config::default();
+    config.ignore.files = vec!["convex/helpers".to_string()];
+    assert!(config.is_file_ignored(Path::new("."), Path::new("convex/helpers/config.ts")));
+}
+
+#[test]
+fn test_ignore_leading_slash_pattern_matches_root() {
+    let mut config = Config::default();
+    config.ignore.files = vec!["/convex/messages.ts".to_string()];
+    assert!(config.is_file_ignored(Path::new("."), Path::new("convex/messages.ts")));
+}

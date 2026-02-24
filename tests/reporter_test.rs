@@ -41,6 +41,50 @@ fn test_json_output_structure() {
 }
 
 #[test]
+fn test_json_summary_counts_errors_warnings_and_infos() {
+    let diagnostics = vec![
+        Diagnostic {
+            rule: "security/missing-auth-check".to_string(),
+            severity: Severity::Error,
+            category: Category::Security,
+            message: "Public query does not check auth".to_string(),
+            help: "Add auth check".to_string(),
+            file: "convex/messages.ts".to_string(),
+            line: 5,
+            column: 1,
+        },
+        Diagnostic {
+            rule: "perf/unbounded-collect".to_string(),
+            severity: Severity::Warning,
+            category: Category::Performance,
+            message: "Unbounded collect".to_string(),
+            help: "Use take".to_string(),
+            file: "convex/messages.ts".to_string(),
+            line: 22,
+            column: 10,
+        },
+        Diagnostic {
+            rule: "config/missing-tsconfig".to_string(),
+            severity: Severity::Info,
+            category: Category::Configuration,
+            message: "No tsconfig".to_string(),
+            help: "Create tsconfig".to_string(),
+            file: "convex/".to_string(),
+            line: 0,
+            column: 0,
+        },
+    ];
+    let score = compute_score(&diagnostics);
+    let reporter = JsonReporter;
+    let output = reporter.format(&diagnostics, &score, "my-app", false);
+    let json: serde_json::Value = serde_json::from_str(&output).unwrap();
+
+    assert_eq!(json["summary"]["errors"].as_u64().unwrap(), 1);
+    assert_eq!(json["summary"]["warnings"].as_u64().unwrap(), 1);
+    assert_eq!(json["summary"]["infos"].as_u64().unwrap(), 1);
+}
+
+#[test]
 fn test_score_only_output() {
     let diagnostics = sample_diagnostics();
     let score = compute_score(&diagnostics);
