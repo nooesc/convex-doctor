@@ -10,17 +10,16 @@ Tested against popular open-source Convex projects:
 
 | Project | Stars | Score | Errors | Warnings | Info | Total |
 |---------|------:|------:|-------:|---------:|-----:|------:|
-| [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 35/100 | 12 | 63 | 6 | 81 |
-| [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 615 | 18/100 | 12 | 39 | 4 | 55 |
-| [markdown-site](https://github.com/waynesutton/markdown-site) | 547 | 0/100 | 77 | 316 | 48 | 441 |
-| [convex-helpers](https://github.com/get-convex/convex-helpers) | 430 | 49/100 | 3 | 68 | 8 | 79 |
-| [better-convex](https://github.com/udecode/better-convex) | 363 | 81/100 | 6 | 1 | 0 | 7 |
-| [convex-saas](https://github.com/get-convex/convex-saas) | 338 | 42/100 | 5 | 51 | 26 | 82 |
-| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 315 | 0/100 | 50 | 192 | 120 | 362 |
-| [opensync](https://github.com/waynesutton/opensync) | 301 | 0/100 | 70 | 277 | 58 | 405 |
-| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 210 | 3/100 | 22 | 131 | 20 | 173 |
-| [replicate](https://github.com/trestleinc/replicate) | 196 | 70/100 | 3 | 15 | 0 | 18 |
-| [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 0/100 | 49 | 188 | 15 | 252 |
+| [replicate](https://github.com/trestleinc/replicate) | 196 | 88/100 | 3 | 15 | 0 | 18 |
+| [convex-helpers](https://github.com/get-convex/convex-helpers) | 430 | 81/100 | 3 | 68 | 8 | 79 |
+| [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 77/100 | 12 | 63 | 6 | 81 |
+| [convex-saas](https://github.com/get-convex/convex-saas) | 338 | 76/100 | 5 | 51 | 26 | 82 |
+| [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 615 | 69/100 | 12 | 39 | 4 | 55 |
+| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 210 | 64/100 | 22 | 131 | 20 | 173 |
+| [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 56/100 | 49 | 188 | 15 | 252 |
+| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 315 | 55/100 | 50 | 192 | 120 | 362 |
+| [opensync](https://github.com/waynesutton/opensync) | 301 | 48/100 | 70 | 277 | 58 | 405 |
+| [markdown-site](https://github.com/waynesutton/markdown-site) | 547 | 36/100 | 77 | 316 | 48 | 441 |
 
 *Benchmarks run on Feb 24, 2026 against each project's `main` branch.*
 

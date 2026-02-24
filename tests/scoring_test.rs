@@ -29,8 +29,8 @@ fn test_single_error_deduction() {
         Category::Performance,
     )];
     let result = compute_score(&diagnostics);
-    // error = -3, performance weight = 1.2, deduction = 3.6, score = 96
-    assert_eq!(result.value, 96);
+    // error = -2, performance weight = 1.2, deduction = 2.4, score = 98
+    assert_eq!(result.value, 98);
     assert_eq!(result.label, "Healthy");
 }
 
@@ -42,8 +42,8 @@ fn test_single_warning_deduction() {
         Category::Architecture,
     )];
     let result = compute_score(&diagnostics);
-    // warning = -1, architecture weight = 0.8, deduction = 0.8, score = 99
-    assert_eq!(result.value, 99);
+    // warning = -0.4, architecture weight = 0.8, deduction = 0.32, score = 100
+    assert_eq!(result.value, 100);
 }
 
 #[test]
@@ -54,8 +54,8 @@ fn test_security_error_weighted_higher() {
         Category::Security,
     )];
     let result = compute_score(&diagnostics);
-    // error = -3, security weight = 1.5, deduction = 4.5, score = 95.5 (rounds to 96)
-    assert_eq!(result.value, 96);
+    // error = -2, security weight = 1.5, deduction = 3.0, score = 97
+    assert_eq!(result.value, 97);
 }
 
 #[test]
@@ -70,8 +70,8 @@ fn test_per_rule_cap_errors() {
         })
         .collect();
     let result = compute_score(&diagnostics);
-    // 6 * 3 * 1.2 = 21.6, capped at 15 * 1.2 = 18, score = 82
-    assert_eq!(result.value, 82);
+    // 6 * 2 * 1.2 = 14.4, capped at 4 * 1.2 = 4.8, score = 95
+    assert_eq!(result.value, 95);
 }
 
 #[test]
@@ -86,8 +86,8 @@ fn test_per_rule_cap_warnings() {
         })
         .collect();
     let result = compute_score(&diagnostics);
-    // 6 * 1 * 0.8 = 4.8, capped at 5 * 0.8 = 4.0, score = 96
-    assert_eq!(result.value, 96);
+    // 6 * 0.4 * 0.8 = 1.92, capped at 1.5 * 0.8 = 1.2, score = 99
+    assert_eq!(result.value, 99);
 }
 
 #[test]
@@ -126,9 +126,9 @@ fn test_multiple_categories() {
         ),
     ];
     let result = compute_score(&diagnostics);
-    // security: -3 * 1.5 = -4.5
-    // perf: -3 * 1.2 = -3.6
-    // arch: -1 * 0.8 = -0.8
-    // total deduction = 8.9, score = 91
-    assert_eq!(result.value, 91);
+    // security: -2 * 1.5 = -3.0
+    // perf: -2 * 1.2 = -2.4
+    // arch: -0.4 * 0.8 = -0.32
+    // total deduction = 5.72, score = 94
+    assert_eq!(result.value, 94);
 }
