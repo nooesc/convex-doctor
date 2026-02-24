@@ -313,22 +313,6 @@ You can also use the `[ci]` config section in `convex-doctor.toml` to set the th
 
 If `fail_below` is set in the config, convex-doctor will exit with code 1 when the score falls below the threshold.
 
-## Contributing
-
-Contributions are welcome. To get started:
-
-```sh
-git clone https://github.com/nooesc/convex-doctor.git
-cd convex-doctor
-cargo test
-cargo clippy -- -D warnings
-```
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b my-feature`)
-3. Run `cargo test` and `cargo clippy -- -D warnings` before committing
-4. Open a pull request
-
 ## License
 
 MIT
