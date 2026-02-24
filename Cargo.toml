@@ -5,6 +5,11 @@ edition = "2021"
 rust-version = "1.70"
 description = "Diagnose your Convex backend for anti-patterns, security issues, and performance problems"
 license = "MIT"
+repository = "https://github.com/nooesc/convex-doctor"
+homepage = "https://github.com/nooesc/convex-doctor"
+readme = "README.md"
+keywords = ["convex", "linter", "static-analysis", "typescript"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 oxc_allocator = "0.115"

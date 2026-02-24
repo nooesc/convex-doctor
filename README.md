@@ -31,7 +31,29 @@ Tested against 18 open-source Convex applications, including hackathon winners:
 
 *Benchmarks run on Feb 24, 2026 against each project's `main` branch. Sorted by score.*
 
-## Quick start
+## Installation
+
+### Download prebuilt binary (recommended)
+
+Grab the latest release for your platform from [GitHub Releases](https://github.com/nooesc/convex-doctor/releases/latest):
+
+```sh
+# macOS (Apple Silicon)
+curl -L https://github.com/nooesc/convex-doctor/releases/latest/download/convex-doctor-aarch64-darwin -o convex-doctor
+chmod +x convex-doctor && sudo mv convex-doctor /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/nooesc/convex-doctor/releases/latest/download/convex-doctor-x86_64-darwin -o convex-doctor
+chmod +x convex-doctor && sudo mv convex-doctor /usr/local/bin/
+
+# Linux (x86_64)
+curl -L https://github.com/nooesc/convex-doctor/releases/latest/download/convex-doctor-x86_64-linux -o convex-doctor
+chmod +x convex-doctor && sudo mv convex-doctor /usr/local/bin/
+
+# Linux (aarch64)
+curl -L https://github.com/nooesc/convex-doctor/releases/latest/download/convex-doctor-aarch64-linux -o convex-doctor
+chmod +x convex-doctor && sudo mv convex-doctor /usr/local/bin/
+```
 
 ### Install from crates.io
 
@@ -278,7 +300,7 @@ fail_below = 70
 
 ### GitHub Actions
 
-Add convex-doctor to your CI pipeline to catch regressions:
+Add convex-doctor to your CI pipeline using the prebuilt binary (runs in ~2 seconds, no Rust toolchain needed):
 
 ```yaml
 name: Convex Health Check
@@ -291,27 +313,43 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install convex-doctor
-        run: cargo install convex-doctor
+        run: |
+          curl -L https://github.com/nooesc/convex-doctor/releases/latest/download/convex-doctor-x86_64-linux -o convex-doctor
+          chmod +x convex-doctor
 
       - name: Run convex-doctor
-        run: |
-          SCORE=$(convex-doctor --score)
-          echo "Health score: $SCORE"
-          if [ "$SCORE" -lt 70 ]; then
-            echo "::error::Convex health score is $SCORE (below threshold of 70)"
-            convex-doctor -v
-            exit 1
-          fi
+        run: ./convex-doctor
 ```
 
-You can also use the `[ci]` config section in `convex-doctor.toml` to set the threshold, then simply run:
+By default, convex-doctor exits with code 0. To **fail the build** when the score drops below a threshold, add a `convex-doctor.toml` to your project root:
+
+```toml
+[ci]
+fail_below = 70
+```
+
+convex-doctor will exit with code 1 when the score is below `fail_below`.
+
+### Diff mode (PR-only scanning)
+
+Only lint files changed in the pull request — useful for large codebases:
 
 ```yaml
-      - name: Run convex-doctor
-        run: convex-doctor
+      - name: Run convex-doctor (changed files only)
+        run: ./convex-doctor --diff origin/main
 ```
 
-If `fail_below` is set in the config, convex-doctor will exit with code 1 when the score falls below the threshold.
+### Alternative: install via cargo
+
+If you prefer using the Rust toolchain:
+
+```yaml
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install convex-doctor
+      - run: convex-doctor
+```
+
+Note: `cargo install` takes ~30s to compile. The prebuilt binary approach is faster.
 
 ## License
 
