@@ -47,11 +47,20 @@ impl Config {
         !matches!(self.rules.get(rule_id), Some(v) if v == "off")
     }
 
-    pub fn is_file_ignored(&self, file_path: &Path) -> bool {
-        let path_str = file_path.to_string_lossy();
+    pub fn is_file_ignored(&self, project_root: &Path, file_path: &Path) -> bool {
+        let absolute = file_path.to_string_lossy().replace('\\', "/");
+        let relative = file_path
+            .strip_prefix(project_root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| absolute.clone());
+        let relative_with_dot = format!("./{relative}");
+
         for pattern in &self.ignore.files {
             if let Ok(glob) = glob::Pattern::new(pattern) {
-                if glob.matches(&path_str) {
+                if glob.matches(&relative)
+                    || glob.matches(&relative_with_dot)
+                    || glob.matches(&absolute)
+                {
                     return true;
                 }
             }

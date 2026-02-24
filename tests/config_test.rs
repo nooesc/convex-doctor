@@ -63,6 +63,14 @@ fn test_is_rule_enabled() {
 #[test]
 fn test_is_file_ignored() {
     let config = Config::default();
-    assert!(config.is_file_ignored(Path::new("convex/_generated/api.d.ts")));
-    assert!(!config.is_file_ignored(Path::new("convex/messages.ts")));
+    assert!(config.is_file_ignored(Path::new("."), Path::new("convex/_generated/api.d.ts")));
+    assert!(!config.is_file_ignored(Path::new("."), Path::new("convex/messages.ts")));
+}
+
+#[test]
+fn test_is_file_ignored_with_absolute_path() {
+    let config = Config::default();
+    let root = Path::new("/repo");
+    let file = Path::new("/repo/convex/_generated/api.d.ts");
+    assert!(config.is_file_ignored(root, file));
 }

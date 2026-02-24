@@ -82,12 +82,12 @@ impl ProjectInfo {
 
     pub fn discover_files(&self, config: &Config) -> Vec<PathBuf> {
         let mut files = Vec::new();
-        Self::walk_dir(&self.convex_dir, config, &mut files);
+        Self::walk_dir(&self.root, &self.convex_dir, config, &mut files);
         files.sort();
         files
     }
 
-    fn walk_dir(dir: &Path, config: &Config, files: &mut Vec<PathBuf>) {
+    fn walk_dir(project_root: &Path, dir: &Path, config: &Config, files: &mut Vec<PathBuf>) {
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
             Err(_) => return,
@@ -98,10 +98,10 @@ impl ProjectInfo {
                 if path.file_name().is_some_and(|n| n == "_generated") {
                     continue;
                 }
-                Self::walk_dir(&path, config, files);
+                Self::walk_dir(project_root, &path, config, files);
             } else if let Some(ext) = path.extension() {
                 if matches!(ext.to_str(), Some("ts" | "tsx" | "js" | "jsx"))
-                    && !config.is_file_ignored(&path)
+                    && !config.is_file_ignored(project_root, &path)
                 {
                     files.push(path);
                 }
