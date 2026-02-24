@@ -1,6 +1,8 @@
 pub mod cli;
 pub mod json;
 
+use std::time::Duration;
+
 use crate::diagnostic::Diagnostic;
 use crate::scoring::ScoreResult;
 
@@ -11,6 +13,8 @@ pub trait Reporter {
         score: &ScoreResult,
         project_name: &str,
         verbose: bool,
+        files_scanned: usize,
+        elapsed: Duration,
     ) -> String;
 }
 

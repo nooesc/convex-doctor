@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde::Serialize;
 
 use crate::diagnostic::{Diagnostic, Severity};
@@ -26,6 +28,7 @@ struct SummaryJson {
     errors: usize,
     warnings: usize,
     infos: usize,
+    files_scanned: usize,
 }
 
 impl Reporter for JsonReporter {
@@ -35,6 +38,8 @@ impl Reporter for JsonReporter {
         score: &ScoreResult,
         _project_name: &str,
         _verbose: bool,
+        files_scanned: usize,
+        _elapsed: Duration,
     ) -> String {
         let errors = diagnostics
             .iter()
@@ -58,6 +63,7 @@ impl Reporter for JsonReporter {
                 errors,
                 warnings,
                 infos,
+                files_scanned,
             },
             diagnostics,
         };

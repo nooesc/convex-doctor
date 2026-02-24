@@ -245,34 +245,7 @@ The health score ranges from 0 to 100. Each finding deducts points based on its 
 
 ## Example output
 
-```
-  convex-doctor v0.1.0
-
-  Project: my-app
-
-  Score: 72 / 100 — Needs attention
-
-  4 errors, 3 warnings
-
-  ── Security ──────────────────────────────────────────
-  ERROR  security/missing-arg-validators
-         Public query `getUser` has no argument validators
-         Help: Add `args: { ... }` with validators for all parameters.
-
-   WARN  security/missing-auth-check
-         Public mutation `createPost` does not check authentication
-         Help: Consider adding `const identity = await ctx.auth.getUserIdentity()`.
-
-  ── Performance ───────────────────────────────────────
-  ERROR  perf/unbounded-collect
-         Unbounded `.collect()` call
-         Help: Use `.take(n)` to limit results or implement pagination.
-
-  ── Correctness ───────────────────────────────────────
-  ERROR  correctness/unwaited-promise
-         `ctx.db.insert` is not awaited
-         Help: This call returns a Promise that must be awaited.
-```
+![convex-doctor CLI output](assets/screenshot.png)
 
 ## Configuration
 

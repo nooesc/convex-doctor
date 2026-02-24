@@ -1,6 +1,8 @@
-use clap::{Parser, ValueEnum};
 use std::path::PathBuf;
 use std::process;
+use std::time::Instant;
+
+use clap::{Parser, ValueEnum};
 
 use convex_doctor::reporter::cli::CliReporter;
 use convex_doctor::reporter::json::JsonReporter;
@@ -43,6 +45,7 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
+    let start = Instant::now();
     let result = match convex_doctor::engine::run(&cli.path, cli.verbose, cli.diff.as_deref()) {
         Ok(r) => r,
         Err(e) => {
@@ -50,6 +53,7 @@ fn main() {
             process::exit(1);
         }
     };
+    let elapsed = start.elapsed();
 
     if cli.score {
         print!("{}", convex_doctor::reporter::score_only(&result.score));
@@ -62,6 +66,8 @@ fn main() {
                     &result.score,
                     &result.project_name,
                     cli.verbose,
+                    result.files_scanned,
+                    elapsed,
                 )
             }
             OutputFormat::Cli => {
@@ -71,6 +77,8 @@ fn main() {
                     &result.score,
                     &result.project_name,
                     cli.verbose,
+                    result.files_scanned,
+                    elapsed,
                 )
             }
         };

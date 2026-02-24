@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 #[test]
 fn test_e2e_sample_project() {
@@ -28,7 +29,14 @@ fn test_e2e_json_output() {
             .unwrap();
 
     let reporter = JsonReporter;
-    let json_str = reporter.format(&result.diagnostics, &result.score, "sample_project", false);
+    let json_str = reporter.format(
+        &result.diagnostics,
+        &result.score,
+        "sample_project",
+        false,
+        result.files_scanned,
+        Duration::from_millis(1),
+    );
     let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
 
     assert!(json["score"]["value"].as_u64().unwrap() <= 100);

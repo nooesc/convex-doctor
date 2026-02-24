@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use convex_doctor::diagnostic::{Category, Diagnostic, Severity};
 use convex_doctor::reporter::json::JsonReporter;
 use convex_doctor::reporter::Reporter;
@@ -33,11 +35,19 @@ fn test_json_output_structure() {
     let diagnostics = sample_diagnostics();
     let score = compute_score(&diagnostics);
     let reporter = JsonReporter;
-    let output = reporter.format(&diagnostics, &score, "my-app", false);
+    let output = reporter.format(
+        &diagnostics,
+        &score,
+        "my-app",
+        false,
+        5,
+        Duration::from_millis(42),
+    );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert!(json["score"]["value"].is_number());
     assert!(json["diagnostics"].is_array());
     assert_eq!(json["diagnostics"].as_array().unwrap().len(), 2);
+    assert_eq!(json["summary"]["files_scanned"].as_u64().unwrap(), 5);
 }
 
 #[test]
@@ -76,7 +86,14 @@ fn test_json_summary_counts_errors_warnings_and_infos() {
     ];
     let score = compute_score(&diagnostics);
     let reporter = JsonReporter;
-    let output = reporter.format(&diagnostics, &score, "my-app", false);
+    let output = reporter.format(
+        &diagnostics,
+        &score,
+        "my-app",
+        false,
+        3,
+        Duration::from_millis(10),
+    );
     let json: serde_json::Value = serde_json::from_str(&output).unwrap();
 
     assert_eq!(json["summary"]["errors"].as_u64().unwrap(), 1);
