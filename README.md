@@ -1,5 +1,7 @@
 # convex-doctor
 
+![convex-doctor CLI output](assets/screenshot.png)
+
 Diagnose your Convex backend for anti-patterns, security issues, and performance problems.
 
 `convex-doctor` is a static analysis CLI for [Convex](https://convex.dev) projects. It parses your `convex/` directory, runs **65 rules across 7 categories**, and produces a weighted 0-100 health score. Think of it as ESLint, but purpose-built for Convex backends.
@@ -242,10 +244,6 @@ The health score ranges from 0 to 100. Each finding deducts points based on its 
 | 70 - 84 | Needs attention | Some issues worth addressing |
 | 50 - 69 | Unhealthy | Significant problems found |
 | 0 - 49 | Critical | Serious issues requiring immediate attention |
-
-## Example output
-
-![convex-doctor CLI output](assets/screenshot.png)
 
 ## Configuration
 
