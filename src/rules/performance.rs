@@ -4,7 +4,7 @@ use crate::rules::{FileAnalysis, Rule};
 pub struct UnboundedCollect;
 impl Rule for UnboundedCollect {
     fn id(&self) -> &'static str {
-        "performance/unbounded-collect"
+        "perf/unbounded-collect"
     }
     fn category(&self) -> Category {
         Category::Performance
@@ -30,7 +30,7 @@ impl Rule for UnboundedCollect {
 pub struct FilterWithoutIndex;
 impl Rule for FilterWithoutIndex {
     fn id(&self) -> &'static str {
-        "performance/filter-without-index"
+        "perf/filter-without-index"
     }
     fn category(&self) -> Category {
         Category::Performance
@@ -56,7 +56,7 @@ impl Rule for FilterWithoutIndex {
 pub struct DateNowInQuery;
 impl Rule for DateNowInQuery {
     fn id(&self) -> &'static str {
-        "performance/date-now-in-query"
+        "perf/date-now-in-query"
     }
     fn category(&self) -> Category {
         Category::Performance
@@ -83,7 +83,7 @@ impl Rule for DateNowInQuery {
 pub struct LoopRunMutation;
 impl Rule for LoopRunMutation {
     fn id(&self) -> &'static str {
-        "performance/loop-run-mutation"
+        "perf/loop-run-mutation"
     }
     fn category(&self) -> Category {
         Category::Performance
@@ -111,7 +111,7 @@ impl Rule for LoopRunMutation {
 pub struct SequentialRunCalls;
 impl Rule for SequentialRunCalls {
     fn id(&self) -> &'static str {
-        "performance/sequential-run-calls"
+        "perf/sequential-run-calls"
     }
     fn category(&self) -> Category {
         Category::Performance
@@ -152,7 +152,7 @@ impl Rule for SequentialRunCalls {
 pub struct UnnecessaryRunAction;
 impl Rule for UnnecessaryRunAction {
     fn id(&self) -> &'static str {
-        "performance/unnecessary-run-action"
+        "perf/unnecessary-run-action"
     }
     fn category(&self) -> Category {
         Category::Performance
@@ -186,7 +186,7 @@ impl Rule for UnnecessaryRunAction {
 pub struct HelperVsRun;
 impl Rule for HelperVsRun {
     fn id(&self) -> &'static str {
-        "performance/helper-vs-run"
+        "perf/helper-vs-run"
     }
     fn category(&self) -> Category {
         Category::Performance
