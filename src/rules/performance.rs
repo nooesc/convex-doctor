@@ -1,4 +1,4 @@
-use crate::diagnostic::{Category, Diagnostic};
+use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, Rule};
 
 pub struct UnboundedCollect;
@@ -9,8 +9,21 @@ impl Rule for UnboundedCollect {
     fn category(&self) -> Category {
         Category::Performance
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .collect_calls
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: "Unbounded `.collect()` call".to_string(),
+                help: "Use `.take(n)` to limit results or implement pagination. All results count toward database bandwidth.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
     }
 }
 
@@ -22,8 +35,21 @@ impl Rule for FilterWithoutIndex {
     fn category(&self) -> Category {
         Category::Performance
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .filter_calls
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: "`.filter()` without an index scans the entire table".to_string(),
+                help: "Define an index on the filtered field and use `.withIndex()` instead for better performance.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
     }
 }
 
@@ -35,8 +61,27 @@ impl Rule for DateNowInQuery {
     fn category(&self) -> Category {
         Category::Performance
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        // Only flag Date.now() if the file contains query functions
+        let has_query = analysis.functions.iter().any(|f| f.kind.is_query());
+        if !has_query {
+            return vec![];
+        }
+
+        analysis
+            .date_now_calls
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: "`Date.now()` in a query function breaks caching".to_string(),
+                help: "Queries must be deterministic. Pass the timestamp as an argument from the client or use a mutation instead.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
     }
 }
 
@@ -48,7 +93,20 @@ impl Rule for LoopRunMutation {
     fn category(&self) -> Category {
         Category::Performance
     }
-    fn check(&self, _analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        vec![]
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .loop_ctx_calls
+            .iter()
+            .map(|c| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!("ctx call `{}` inside a loop", c.detail),
+                help: "Calling ctx.runMutation/ctx.runQuery in a loop causes N+1 round trips. Consider batching operations or restructuring.".to_string(),
+                file: analysis.file_path.clone(),
+                line: c.line,
+                column: c.col,
+            })
+            .collect()
     }
 }
