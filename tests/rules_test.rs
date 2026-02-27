@@ -17,7 +17,7 @@ fn test_registry_has_all_categories() {
 #[test]
 fn test_registry_rule_count() {
     let registry = RuleRegistry::new();
-    assert_eq!(registry.rules().len(), 65);
+    assert_eq!(registry.rules().len(), 72);
 }
 
 #[test]

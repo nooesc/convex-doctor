@@ -753,7 +753,6 @@ function App() {
 // 16. Collect-then-filter detection
 // --------------------------------------------------------------------------
 
-
 #[test]
 fn test_collect_then_filter_visitor_detection() {
     let dir = tempfile::TempDir::new().unwrap();

@@ -24,20 +24,18 @@ impl Rule for MissingArgValidators {
             .functions
             .iter()
             .filter(|f| {
-                f.is_public()
-                    && f.kind != FunctionKind::HttpAction
-                    && !f.has_args_validator
+                f.kind != FunctionKind::HttpAction && !f.has_args_validator
             })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
                 category: self.category(),
                 message: format!(
-                    "Public {} `{}` has no argument validators",
+                    "{} `{}` has no argument validators",
                     f.kind_str(),
                     f.name
                 ),
-                help: "Add `args: { ... }` with validators for all parameters. Public functions can be called by anyone.".to_string(),
+                help: "Add `args: { ... }` with validators for all parameters. Convex guidance requires validators for query/mutation/action and internal variants.".to_string(),
                 file: analysis.file_path.clone(),
                 line: f.span_line,
                 column: f.span_col,

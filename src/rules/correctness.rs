@@ -463,7 +463,7 @@ impl Rule for NonDeterministicInQuery {
     }
 }
 
-/// Suggest using ctx.db.patch instead of ctx.db.replace for partial updates.
+/// Remind about replace semantics: it fully overwrites a document.
 pub struct ReplaceVsPatch;
 impl Rule for ReplaceVsPatch {
     fn id(&self) -> &'static str {
@@ -481,11 +481,149 @@ impl Rule for ReplaceVsPatch {
                 rule: self.id().to_string(),
                 severity: Severity::Info,
                 category: self.category(),
-                message: "`ctx.db.replace` overwrites the entire document".to_string(),
-                help: "Did you mean `ctx.db.patch`? `replace` removes all fields not in the new object. Use `patch` for partial updates.".to_string(),
+                message: "`ctx.db.replace` fully replaces the existing document".to_string(),
+                help: "Use `replace` for full document replacement and `patch` for partial updates. `replace` will remove omitted fields.".to_string(),
                 file: analysis.file_path.clone(),
                 line: c.line,
                 column: c.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect unsupported validator methods from Convex guidance.
+pub struct UnsupportedValidatorType;
+impl Rule for UnsupportedValidatorType {
+    fn id(&self) -> &'static str {
+        "correctness/unsupported-validator-type"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .unsupported_validator_calls
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!("Unsupported validator usage: {}", loc.detail),
+                help: "Convex does not support `v.map()` or `v.set()`. Use `v.record()` for map-like structures.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect `.delete()` on query chains; Convex query chains do not support delete.
+pub struct QueryDeleteUnsupported;
+impl Rule for QueryDeleteUnsupported {
+    fn id(&self) -> &'static str {
+        "correctness/query-delete-unsupported"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .query_delete_calls
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!("Query chain uses unsupported `.delete()`: {}", loc.detail),
+                help: "Collect matching rows, then call `ctx.db.delete(row._id)` for each document in a mutation.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect deprecated cron helper methods.
+pub struct CronHelperMethodUsage;
+impl Rule for CronHelperMethodUsage {
+    fn id(&self) -> &'static str {
+        "correctness/cron-helper-method-usage"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .cron_helper_calls
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!("Avoid deprecated cron helper method: {}", loc.detail),
+                help: "Use `crons.interval(...)` or `crons.cron(...)` instead of `hourly`/`daily`/`weekly` helpers.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect cron schedules that pass direct function identifiers instead of FunctionReference.
+pub struct CronDirectFunctionReference;
+impl Rule for CronDirectFunctionReference {
+    fn id(&self) -> &'static str {
+        "correctness/cron-direct-function-reference"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .cron_non_reference_calls
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Error,
+                category: self.category(),
+                message: format!(
+                    "Cron schedule uses direct function reference `{}`",
+                    loc.detail
+                ),
+                help: "Cron schedules must receive a generated `FunctionReference` (for example `internal.jobs.run`) instead of a direct function identifier.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}
+
+/// Detect deprecated storage metadata API usage.
+pub struct StorageGetMetadataDeprecated;
+impl Rule for StorageGetMetadataDeprecated {
+    fn id(&self) -> &'static str {
+        "correctness/storage-get-metadata-deprecated"
+    }
+    fn category(&self) -> Category {
+        Category::Correctness
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .storage_metadata_calls
+            .iter()
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!("Deprecated storage API call: {}", loc.detail),
+                help: "Use the `_storage` system table (for example `ctx.db.system.get(\"_storage\", id)`) instead of `ctx.storage.getMetadata`.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
             })
             .collect()
     }

@@ -42,6 +42,13 @@ pub struct FileAnalysis {
     pub search_index_definitions: Vec<SearchIndexDef>,
     pub large_writes: Vec<CallLocation>,
     pub optional_schema_fields: Vec<CallLocation>,
+    pub unsupported_validator_calls: Vec<CallLocation>,
+    pub query_delete_calls: Vec<CallLocation>,
+    pub cron_helper_calls: Vec<CallLocation>,
+    pub cron_non_reference_calls: Vec<CallLocation>,
+    pub storage_metadata_calls: Vec<CallLocation>,
+    pub paginated_functions: Vec<CallLocation>,
+    pub pagination_validator_functions: Vec<String>,
     pub unexported_function_count: u32,
     pub convex_hook_calls: Vec<ConvexHookCall>,
     pub has_convex_provider: bool,
@@ -268,7 +275,7 @@ impl RuleRegistry {
             Box::new(security::GenericMutationArgs),
             Box::new(security::OverlyBroadPatch),
             Box::new(security::HttpMissingCors),
-            // Performance (12)
+            // Performance (13)
             Box::new(performance::UnboundedCollect),
             Box::new(performance::FilterWithoutIndex),
             Box::new(performance::DateNowInQuery),
@@ -281,7 +288,8 @@ impl RuleRegistry {
             Box::new(performance::CollectThenFilter),
             Box::new(performance::LargeDocumentWrite),
             Box::new(performance::NoPaginationForList),
-            // Correctness (15)
+            Box::new(performance::MissingPaginationOptsValidator),
+            // Correctness (20)
             Box::new(correctness::UnwaitedPromise),
             Box::new(correctness::OldFunctionSyntax),
             Box::new(correctness::DbInAction),
@@ -297,7 +305,12 @@ impl RuleRegistry {
             Box::new(correctness::NonDeterministicInQuery),
             Box::new(correctness::ReplaceVsPatch),
             Box::new(correctness::GeneratedCodeModified),
-            // Schema (8)
+            Box::new(correctness::UnsupportedValidatorType),
+            Box::new(correctness::QueryDeleteUnsupported),
+            Box::new(correctness::CronHelperMethodUsage),
+            Box::new(correctness::CronDirectFunctionReference),
+            Box::new(correctness::StorageGetMetadataDeprecated),
+            // Schema (9)
             Box::new(schema::MissingSchema),
             Box::new(schema::DeepNesting),
             Box::new(schema::ArrayRelationships),
@@ -306,6 +319,7 @@ impl RuleRegistry {
             Box::new(schema::MissingSearchIndexFilter),
             Box::new(schema::OptionalFieldNoDefaultHandling),
             Box::new(schema::MissingIndexForQuery),
+            Box::new(schema::IndexNameIncludesFields),
             // Architecture (8)
             Box::new(architecture::LargeHandler),
             Box::new(architecture::MonolithicFile),

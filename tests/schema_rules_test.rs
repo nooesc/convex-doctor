@@ -119,3 +119,55 @@ export default defineSchema({
         "Redundant index detection should work when defineTable is aliased to a variable"
     );
 }
+
+#[test]
+fn test_index_name_includes_fields_detected() {
+    let dir = TempDir::new().unwrap();
+    let schema_path = dir.path().join("schema.ts");
+    std::fs::write(
+        &schema_path,
+        r#"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  posts: defineTable({
+    authorId: v.id("users"),
+    title: v.string(),
+  }).index("by_author", ["authorId", "title"]),
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&schema_path).unwrap();
+    let rule = IndexNameIncludesFields;
+    let diagnostics = rule.check(&analysis);
+    assert_eq!(diagnostics.len(), 1);
+}
+
+#[test]
+fn test_index_name_includes_fields_not_flagged_when_expected_name_used() {
+    let dir = TempDir::new().unwrap();
+    let schema_path = dir.path().join("schema.ts");
+    std::fs::write(
+        &schema_path,
+        r#"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  posts: defineTable({
+    authorId: v.id("users"),
+    title: v.string(),
+  }).index("by_authorid_and_title", ["authorId", "title"]),
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&schema_path).unwrap();
+    let rule = IndexNameIncludesFields;
+    let diagnostics = rule.check(&analysis);
+    assert!(diagnostics.is_empty());
+}

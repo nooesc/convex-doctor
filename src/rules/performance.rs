@@ -402,3 +402,44 @@ impl Rule for NoPaginationForList {
         }
     }
 }
+
+/// Per-file rule: when `.paginate(...)` is used, ensure the function accepts
+/// `paginationOpts` validated with `paginationOptsValidator`.
+pub struct MissingPaginationOptsValidator;
+impl Rule for MissingPaginationOptsValidator {
+    fn id(&self) -> &'static str {
+        "perf/missing-pagination-opts-validator"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let functions_with_validator: HashSet<&str> = analysis
+            .pagination_validator_functions
+            .iter()
+            .map(String::as_str)
+            .collect();
+
+        let mut seen = HashSet::<&str>::new();
+        analysis
+            .paginated_functions
+            .iter()
+            .filter(|loc| !loc.detail.is_empty())
+            .filter(|loc| !functions_with_validator.contains(loc.detail.as_str()))
+            .filter(|loc| seen.insert(loc.detail.as_str()))
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "Paginated query `{}` is missing `paginationOptsValidator` in args",
+                    loc.detail
+                ),
+                help: "Add `args: { paginationOpts: paginationOptsValidator, ... }` so clients can pass typed pagination options safely.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
+    }
+}

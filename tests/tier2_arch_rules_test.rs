@@ -490,10 +490,10 @@ fn deep_function_chain_skips_internal_secret_actions() {
             },
         ],
         ..Default::default()
-        };
-        let rule = DeepFunctionChain;
-        let diagnostics = rule.check(&analysis);
-        assert!(diagnostics.is_empty());
+    };
+    let rule = DeepFunctionChain;
+    let diagnostics = rule.check(&analysis);
+    assert!(diagnostics.is_empty());
 }
 
 #[test]

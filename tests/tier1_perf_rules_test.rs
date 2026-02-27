@@ -56,10 +56,10 @@ fn test_missing_index_on_foreign_key_not_fired_when_index_exists() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-        assert!(
-            diagnostics.is_empty(),
+    assert!(
+        diagnostics.is_empty(),
         "Should not flag when an index includes the field"
-        );
+    );
 }
 
 #[test]
@@ -106,7 +106,10 @@ fn test_missing_index_on_foreign_key_empty_field_name() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-    assert!(diagnostics.is_empty(), "Empty field names should be skipped");
+    assert!(
+        diagnostics.is_empty(),
+        "Empty field names should be skipped"
+    );
 }
 
 #[test]

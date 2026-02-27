@@ -11,15 +11,7 @@ fn is_crud_like_name(name: &str) -> bool {
     }
 
     const NON_SIMPLE_HINTS: &[&str] = &[
-        "cache",
-        "cached",
-        "helper",
-        "util",
-        "service",
-        "sync",
-        "backfill",
-        "batch",
-        "process",
+        "cache", "cached", "helper", "util", "service", "sync", "backfill", "batch", "process",
     ];
     if NON_SIMPLE_HINTS
         .iter()
@@ -29,16 +21,7 @@ fn is_crud_like_name(name: &str) -> bool {
     }
 
     const CRUD_PREFIXES: &[&str] = &[
-        "get",
-        "list",
-        "create",
-        "update",
-        "delete",
-        "remove",
-        "upsert",
-        "insert",
-        "find",
-        "fetch",
+        "get", "list", "create", "update", "delete", "remove", "upsert", "insert", "find", "fetch",
     ];
 
     CRUD_PREFIXES
@@ -280,7 +263,10 @@ impl Rule for NoHelperFunctions {
                 .iter()
                 .all(|f| is_crud_like_name(&f.name));
 
-        if large_handler_count >= 3 && analysis.unexported_function_count == 0 && !all_handlers_are_crud {
+        if large_handler_count >= 3
+            && analysis.unexported_function_count == 0
+            && !all_handlers_are_crud
+        {
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Info,
