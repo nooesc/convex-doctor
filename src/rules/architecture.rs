@@ -1,6 +1,54 @@
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, Rule};
 
+fn is_crud_like_name(name: &str) -> bool {
+    let normalized = name
+        .to_ascii_lowercase()
+        .trim_start_matches('_')
+        .to_string();
+    if normalized.is_empty() {
+        return false;
+    }
+
+    const NON_SIMPLE_HINTS: &[&str] = &[
+        "cache", "cached", "helper", "util", "service", "sync", "backfill", "batch", "process",
+    ];
+    if NON_SIMPLE_HINTS
+        .iter()
+        .any(|token| normalized.contains(token))
+    {
+        return false;
+    }
+
+    const CRUD_PREFIXES: &[&str] = &[
+        "get", "list", "create", "update", "delete", "remove", "upsert", "insert", "find", "fetch",
+    ];
+
+    CRUD_PREFIXES
+        .iter()
+        .any(|prefix| normalized == *prefix || normalized.starts_with(prefix))
+}
+
+fn is_chunked_processing_action(name: &str) -> bool {
+    let normalized = name.to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+
+    const CHUNK_KEYWORDS: &[&str] = &[
+        "sync",
+        "backfill",
+        "migrate",
+        "reconcile",
+        "reindex",
+        "drain",
+    ];
+
+    CHUNK_KEYWORDS
+        .iter()
+        .any(|keyword| normalized.contains(keyword))
+}
+
 pub struct LargeHandler;
 
 impl Rule for LargeHandler {
@@ -208,7 +256,17 @@ impl Rule for NoHelperFunctions {
             .iter()
             .filter(|f| f.handler_line_count > 15)
             .count();
-        if large_handler_count >= 3 && analysis.unexported_function_count == 0 {
+
+        let all_handlers_are_crud = !analysis.functions.is_empty()
+            && analysis
+                .functions
+                .iter()
+                .all(|f| is_crud_like_name(&f.name));
+
+        if large_handler_count >= 3
+            && analysis.unexported_function_count == 0
+            && !all_handlers_are_crud
+        {
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Info,
@@ -243,9 +301,19 @@ impl Rule for DeepFunctionChain {
             .ctx_calls
             .iter()
             .filter(|c| {
-                c.enclosing_function_kind
+                let is_action = c
+                    .enclosing_function_kind
                     .as_ref()
-                    .is_some_and(|k| k.is_action())
+                    .is_some_and(|k| k.is_action());
+
+                let is_chunked_action = c
+                    .enclosing_function_name
+                    .as_deref()
+                    .is_some_and(is_chunked_processing_action);
+
+                is_action
+                    && !c.enclosing_function_has_internal_secret
+                    && !is_chunked_action
                     && (c.chain.starts_with("ctx.runQuery")
                         || c.chain.starts_with("ctx.runMutation"))
             })

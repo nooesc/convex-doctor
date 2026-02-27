@@ -2,8 +2,8 @@ use convex_doctor::diagnostic::Severity;
 use convex_doctor::rules::context::analyze_file;
 use convex_doctor::rules::performance::*;
 use convex_doctor::rules::{
-    CallLocation, ConvexFunction, FileAnalysis, FunctionKind, IndexDef, ProjectContext, Rule,
-    SchemaIdField,
+    CallLocation, ConvexFunction, CtxCall, FileAnalysis, FunctionKind, IndexDef, ProjectContext,
+    Rule, SchemaIdField,
 };
 use std::path::Path;
 
@@ -18,6 +18,8 @@ fn test_missing_index_on_foreign_key_fires() {
         all_schema_id_fields: vec![SchemaIdField {
             field_name: "userId".to_string(),
             table_ref: "users".to_string(),
+            table_id: "table@users".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
             line: 5,
             col: 10,
         }],
@@ -40,11 +42,13 @@ fn test_missing_index_on_foreign_key_not_fired_when_index_exists() {
         all_schema_id_fields: vec![SchemaIdField {
             field_name: "userId".to_string(),
             table_ref: "users".to_string(),
+            table_id: "table@users".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
             line: 5,
             col: 10,
         }],
         all_index_definitions: vec![IndexDef {
-            table: "posts".to_string(),
+            table: "table@users".to_string(),
             name: "by_user".to_string(),
             fields: vec!["userId".to_string()],
             line: 10,
@@ -59,12 +63,42 @@ fn test_missing_index_on_foreign_key_not_fired_when_index_exists() {
 }
 
 #[test]
+fn test_missing_index_on_foreign_key_matches_table_specific() {
+    let rule = MissingIndexOnForeignKey;
+    let ctx = ProjectContext {
+        all_schema_id_fields: vec![SchemaIdField {
+            field_name: "userId".to_string(),
+            table_ref: "users".to_string(),
+            table_id: "table@users".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
+            line: 5,
+            col: 10,
+        }],
+        all_index_definitions: vec![IndexDef {
+            table: "table@orders".to_string(),
+            name: "by_user".to_string(),
+            fields: vec!["userId".to_string()],
+            line: 10,
+        }],
+        ..Default::default()
+    };
+    let diagnostics = rule.check_project(&ctx);
+    assert_eq!(diagnostics.len(), 1);
+    assert!(
+        diagnostics[0].message.contains("users"),
+        "Should flag when matching field is on a different table"
+    );
+}
+
+#[test]
 fn test_missing_index_on_foreign_key_empty_field_name() {
     let rule = MissingIndexOnForeignKey;
     let ctx = ProjectContext {
         all_schema_id_fields: vec![SchemaIdField {
             field_name: "".to_string(), // empty field name
             table_ref: "users".to_string(),
+            table_id: "".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
             line: 5,
             col: 10,
         }],
@@ -72,10 +106,10 @@ fn test_missing_index_on_foreign_key_empty_field_name() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-    // Empty field_name means no index can match (the filter closure returns false for empty),
-    // so a diagnostic IS emitted.
-    assert_eq!(diagnostics.len(), 1);
-    assert!(diagnostics[0].message.contains("users"));
+    assert!(
+        diagnostics.is_empty(),
+        "Empty field names should be skipped"
+    );
 }
 
 #[test]
@@ -121,6 +155,8 @@ fn test_action_from_client_ignores_internal_action() {
             arg_names: vec![],
             has_return_validator: false,
             has_auth_check: false,
+            has_internal_secret: false,
+            is_intentionally_public: false,
             handler_line_count: 10,
             span_line: 1,
             span_col: 1,
@@ -147,6 +183,8 @@ fn test_action_from_client_ignores_queries_and_mutations() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 1,
                 span_col: 1,
@@ -159,6 +197,8 @@ fn test_action_from_client_ignores_queries_and_mutations() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 10,
                 span_col: 1,
@@ -319,14 +359,23 @@ fn test_no_pagination_for_list_no_public_query() {
             arg_names: vec![],
             has_return_validator: false,
             has_auth_check: false,
+            has_internal_secret: false,
+            is_intentionally_public: false,
             handler_line_count: 5,
             span_line: 1,
             span_col: 1,
         }],
-        collect_calls: vec![CallLocation {
+        ctx_calls: vec![CtxCall {
+            chain: "ctx.db.query.collect".to_string(),
             line: 5,
             col: 10,
-            detail: ".collect()".to_string(),
+            is_awaited: true,
+            is_returned: false,
+            assigned_to: None,
+            enclosing_function_kind: Some(FunctionKind::InternalQuery),
+            enclosing_function_name: Some("getItems".to_string()),
+            enclosing_function_has_internal_secret: false,
+            first_arg_chain: None,
         }],
         ..Default::default()
     };
@@ -349,6 +398,8 @@ fn test_no_pagination_for_list_no_collect() {
             arg_names: vec![],
             has_return_validator: false,
             has_auth_check: false,
+            has_internal_secret: false,
+            is_intentionally_public: false,
             handler_line_count: 5,
             span_line: 1,
             span_col: 1,
@@ -376,6 +427,8 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 1,
                 span_col: 1,
@@ -388,21 +441,37 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 10,
                 span_col: 1,
             },
         ],
-        collect_calls: vec![
-            CallLocation {
+        ctx_calls: vec![
+            CtxCall {
+                chain: "ctx.db.query.collect".to_string(),
                 line: 5,
                 col: 10,
-                detail: ".collect()".to_string(),
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Query),
+                enclosing_function_name: Some("getItems".to_string()),
+                enclosing_function_has_internal_secret: false,
+                first_arg_chain: None,
             },
-            CallLocation {
+            CtxCall {
+                chain: "ctx.db.query.collect".to_string(),
                 line: 15,
                 col: 10,
-                detail: ".collect()".to_string(),
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Query),
+                enclosing_function_name: Some("getOtherItems".to_string()),
+                enclosing_function_has_internal_secret: false,
+                first_arg_chain: None,
             },
         ],
         ..Default::default()
@@ -412,6 +481,62 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
         diagnostics.len(),
         1,
         "Should emit exactly one diagnostic per file"
+    );
+}
+
+#[test]
+fn test_no_pagination_does_not_cross_trigger_from_mutation_collect() {
+    let rule = NoPaginationForList;
+    let analysis = FileAnalysis {
+        functions: vec![
+            ConvexFunction {
+                name: "listItems".to_string(),
+                kind: FunctionKind::Query,
+                has_args_validator: true,
+                has_any_validator_in_args: false,
+                arg_names: vec![],
+                has_return_validator: false,
+                has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
+                handler_line_count: 5,
+                span_line: 1,
+                span_col: 1,
+            },
+            ConvexFunction {
+                name: "mutateItems".to_string(),
+                kind: FunctionKind::Mutation,
+                has_args_validator: true,
+                has_any_validator_in_args: false,
+                arg_names: vec![],
+                has_return_validator: false,
+                has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
+                handler_line_count: 5,
+                span_line: 10,
+                span_col: 1,
+            },
+        ],
+        ctx_calls: vec![CtxCall {
+            chain: "ctx.db.query.collect".to_string(),
+            line: 12,
+            col: 8,
+            is_awaited: true,
+            is_returned: false,
+            assigned_to: None,
+            enclosing_function_kind: Some(FunctionKind::Mutation),
+            enclosing_function_name: Some("mutateItems".to_string()),
+            enclosing_function_has_internal_secret: false,
+            first_arg_chain: None,
+        }],
+        ..Default::default()
+    };
+
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "collect() inside a mutation should not trigger no-pagination-for-list"
     );
 }
 

@@ -132,6 +132,8 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
         all_diagnostics.extend(project_diagnostics);
     }
 
+    config.apply_strictness(&mut all_diagnostics);
+
     let score = compute_score(&all_diagnostics);
 
     let project_name = path

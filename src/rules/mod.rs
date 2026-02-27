@@ -42,6 +42,13 @@ pub struct FileAnalysis {
     pub search_index_definitions: Vec<SearchIndexDef>,
     pub large_writes: Vec<CallLocation>,
     pub optional_schema_fields: Vec<CallLocation>,
+    pub unsupported_validator_calls: Vec<CallLocation>,
+    pub query_delete_calls: Vec<CallLocation>,
+    pub cron_helper_calls: Vec<CallLocation>,
+    pub cron_non_reference_calls: Vec<CallLocation>,
+    pub storage_metadata_calls: Vec<CallLocation>,
+    pub paginated_functions: Vec<CallLocation>,
+    pub pagination_validator_functions: Vec<String>,
     pub unexported_function_count: u32,
     pub convex_hook_calls: Vec<ConvexHookCall>,
     pub has_convex_provider: bool,
@@ -54,6 +61,8 @@ pub struct ConvexFunction {
     pub has_args_validator: bool,
     pub has_any_validator_in_args: bool,
     pub arg_names: Vec<String>,
+    pub has_internal_secret: bool,
+    pub is_intentionally_public: bool,
     pub has_return_validator: bool,
     pub has_auth_check: bool,
     pub handler_line_count: u32,
@@ -142,6 +151,8 @@ pub struct CtxCall {
     pub is_returned: bool,
     pub assigned_to: Option<String>,
     pub enclosing_function_kind: Option<FunctionKind>,
+    pub enclosing_function_name: Option<String>,
+    pub enclosing_function_has_internal_secret: bool,
     pub first_arg_chain: Option<String>,
 }
 
@@ -172,6 +183,7 @@ pub struct IndexDef {
 pub struct HttpRoute {
     pub method: String,
     pub path: String,
+    pub is_webhook: bool,
     pub line: u32,
 }
 
@@ -179,6 +191,8 @@ pub struct HttpRoute {
 pub struct SchemaIdField {
     pub field_name: String,
     pub table_ref: String,
+    pub table_id: String,
+    pub file: String,
     pub line: u32,
     pub col: u32,
 }
@@ -261,7 +275,7 @@ impl RuleRegistry {
             Box::new(security::GenericMutationArgs),
             Box::new(security::OverlyBroadPatch),
             Box::new(security::HttpMissingCors),
-            // Performance (12)
+            // Performance (13)
             Box::new(performance::UnboundedCollect),
             Box::new(performance::FilterWithoutIndex),
             Box::new(performance::DateNowInQuery),
@@ -274,7 +288,8 @@ impl RuleRegistry {
             Box::new(performance::CollectThenFilter),
             Box::new(performance::LargeDocumentWrite),
             Box::new(performance::NoPaginationForList),
-            // Correctness (15)
+            Box::new(performance::MissingPaginationOptsValidator),
+            // Correctness (20)
             Box::new(correctness::UnwaitedPromise),
             Box::new(correctness::OldFunctionSyntax),
             Box::new(correctness::DbInAction),
@@ -290,7 +305,12 @@ impl RuleRegistry {
             Box::new(correctness::NonDeterministicInQuery),
             Box::new(correctness::ReplaceVsPatch),
             Box::new(correctness::GeneratedCodeModified),
-            // Schema (8)
+            Box::new(correctness::UnsupportedValidatorType),
+            Box::new(correctness::QueryDeleteUnsupported),
+            Box::new(correctness::CronHelperMethodUsage),
+            Box::new(correctness::CronDirectFunctionReference),
+            Box::new(correctness::StorageGetMetadataDeprecated),
+            // Schema (9)
             Box::new(schema::MissingSchema),
             Box::new(schema::DeepNesting),
             Box::new(schema::ArrayRelationships),
@@ -299,6 +319,7 @@ impl RuleRegistry {
             Box::new(schema::MissingSearchIndexFilter),
             Box::new(schema::OptionalFieldNoDefaultHandling),
             Box::new(schema::MissingIndexForQuery),
+            Box::new(schema::IndexNameIncludesFields),
             // Architecture (8)
             Box::new(architecture::LargeHandler),
             Box::new(architecture::MonolithicFile),

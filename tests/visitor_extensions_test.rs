@@ -427,6 +427,35 @@ export default defineSchema({
         .any(|f| f.table_ref == "categories"));
 }
 
+#[test]
+fn test_schema_id_fields_ignore_non_schema_context() {
+    let analysis = analyze_ts(
+        r#"
+import { query, mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const getCreator = query({
+  args: { creatorId: v.id("creators") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.creatorId);
+  },
+});
+
+export const create = mutation({
+  args: { input: v.object({ postId: v.id("posts") }) },
+  handler: async (ctx, args) => {
+    return args;
+  },
+});
+"#,
+    );
+    assert!(
+        analysis.schema_id_fields.is_empty(),
+        "schema_id_fields should only track table schema fields, found {} entries",
+        analysis.schema_id_fields.len()
+    );
+}
+
 // --------------------------------------------------------------------------
 // 10. Filter field names
 // --------------------------------------------------------------------------
@@ -640,6 +669,36 @@ function MyComponent() {
 }
 
 #[test]
+fn test_convex_hook_calls_detected_with_aliases() {
+    let analysis = analyze_ts(
+        r#"
+import { useQuery as useConvexQuery, useMutation as useConvexMutation } from "convex/react";
+import { api } from "../convex/_generated/api";
+
+function MyComponent() {
+  const data = useConvexQuery(api.tasks.list);
+  const create = useConvexMutation(api.tasks.create);
+  return null;
+}
+"#,
+    );
+    assert_eq!(
+        analysis.convex_hook_calls.len(),
+        2,
+        "Aliased hooks should still be detected, found: {:?}",
+        analysis.convex_hook_calls
+    );
+    assert!(analysis
+        .convex_hook_calls
+        .iter()
+        .any(|h| h.hook_name == "useQuery"));
+    assert!(analysis
+        .convex_hook_calls
+        .iter()
+        .any(|h| h.hook_name == "useMutation"));
+}
+
+#[test]
 fn test_has_convex_provider_detected() {
     let analysis = analyze_ts(
         r#"
@@ -653,6 +712,23 @@ function App() {
     assert!(
         analysis.has_convex_provider,
         "Should detect ConvexProvider import"
+    );
+}
+
+#[test]
+fn test_has_convex_provider_detected_when_aliased() {
+    let analysis = analyze_ts(
+        r#"
+import { ConvexProvider as Provider } from "convex/react";
+
+function App() {
+  return null;
+}
+"#,
+    );
+    assert!(
+        analysis.has_convex_provider,
+        "Aliased ConvexProvider import should set has_convex_provider"
     );
 }
 

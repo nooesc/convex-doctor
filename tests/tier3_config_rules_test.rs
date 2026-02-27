@@ -1,8 +1,32 @@
 use convex_doctor::diagnostic::Severity;
 use convex_doctor::rules::configuration::{
-    MissingGeneratedCode, MissingTsconfig, OutdatedNodeVersion,
+    MissingConvexJson, MissingGeneratedCode, MissingTsconfig, OutdatedNodeVersion,
 };
 use convex_doctor::rules::{ProjectContext, Rule};
+
+// --- MissingConvexJson ---
+
+#[test]
+fn test_missing_convex_json() {
+    let ctx = ProjectContext {
+        has_convex_json: false,
+        ..Default::default()
+    };
+    let diags = MissingConvexJson.check_project(&ctx);
+    assert_eq!(diags.len(), 1);
+    assert_eq!(diags[0].rule, "config/missing-convex-json");
+    assert_eq!(diags[0].severity, Severity::Warning);
+}
+
+#[test]
+fn test_missing_convex_json_ok() {
+    let ctx = ProjectContext {
+        has_convex_json: true,
+        ..Default::default()
+    };
+    let diags = MissingConvexJson.check_project(&ctx);
+    assert!(diags.is_empty());
+}
 
 // --- MissingGeneratedCode ---
 

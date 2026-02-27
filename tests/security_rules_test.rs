@@ -29,6 +29,32 @@ fn test_no_false_positive_arg_validators() {
 }
 
 #[test]
+fn test_missing_arg_validators_skips_http_action() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("http_action.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { httpAction } from "convex/server";
+
+export const webhook = httpAction(async (ctx, request) => {
+  return new Response("ok");
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingArgValidators;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "httpAction should be excluded from argument validator checks, got {:?}",
+        diagnostics
+    );
+}
+
+#[test]
 fn test_missing_return_validators() {
     let analysis = analyze_file(Path::new("tests/fixtures/bad_patterns.ts")).unwrap();
     let rule = MissingReturnValidators;
@@ -65,11 +91,82 @@ fn test_auth_check_not_flagged_when_present() {
 }
 
 #[test]
+fn test_missing_auth_check_skips_internal_secret_args() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("internal_secret.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const internalAction = mutation({
+  args: {
+    internalSecret: v.string(),
+    userId: v.string()
+  },
+  handler: async (ctx, { internalSecret, userId }) => {
+    return await ctx.db.get(userId);
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingAuthCheck;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "internalSecret should suppress missing auth checks, got {:?}",
+        diagnostics
+    );
+}
+
+#[test]
+fn test_missing_auth_check_respects_convex_doctor_ignore_comment() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("public_webhook.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { httpAction } from "convex/server";
+
+// convex-doctor-ignore
+export const healthcheck = httpAction(async (ctx, request) => {
+  return new Response("ok");
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingAuthCheck;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "convex-doctor-ignore comment should suppress missing auth checks, got {:?}",
+        diagnostics
+    );
+}
+
+#[test]
 fn test_hardcoded_secrets() {
     let analysis = analyze_file(Path::new("tests/fixtures/secrets_test.ts")).unwrap();
     assert!(
         !analysis.hardcoded_secrets.is_empty(),
         "Should detect hardcoded secret"
+    );
+}
+
+#[test]
+fn test_hardcoded_secrets_rule_emits_diagnostics() {
+    let analysis = analyze_file(Path::new("tests/fixtures/secrets_test.ts")).unwrap();
+    let rule = HardcodedSecrets;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "hardcoded-secrets rule should emit diagnostics when secrets are found"
     );
 }
 
@@ -81,6 +178,39 @@ fn test_spoofable_access_control_detected() {
     assert!(
         !diagnostics.is_empty(),
         "Should detect suspicious auth args without ctx.auth checks"
+    );
+}
+
+#[test]
+fn test_internal_secret_suppresses_spoofable_access_control() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("internal_secret_spoof.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { query } from "convex/server";
+import { v } from "convex/values";
+
+export const getUser = query({
+  args: {
+    userId: v.string(),
+    internalSecret: v.string(),
+  },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db.get(userId);
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = SpoofableAccessControl;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "internalSecret should suppress spoofable access-control flagging, got {:?}",
+        diagnostics
     );
 }
 
@@ -144,5 +274,172 @@ export const getUser = query({
     assert!(
         !diagnostics.is_empty(),
         "Public functions in normal convex/ dir should still be flagged for missing auth"
+    );
+}
+
+#[test]
+fn test_internal_api_misuse_skips_internal_secret_functions() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("internal_secret_api.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { v } from "convex/values";
+import { api } from "../_generated/api";
+
+export const callInternal = mutation({
+  args: {
+    internalSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.runMutation(api.users.syncUsers);
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = InternalApiMisuse;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "internalSecret should suppress internal API misuse, got {:?}",
+        diagnostics
+    );
+}
+
+#[test]
+fn test_internal_api_misuse_detects_scheduler_public_api_reference() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("scheduler_public_api.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { api } from "../_generated/api";
+
+export const trigger = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await ctx.scheduler.runAfter(0, api.tasks.cleanup);
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = InternalApiMisuse;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "scheduler runAfter with api.* should be flagged as internal-api-misuse"
+    );
+}
+
+#[test]
+fn test_missing_return_validators_skips_internal_functions() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("internal_no_returns.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { internalMutation, mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const internalWrite = internalMutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("messages", { body: args.body });
+  },
+});
+
+export const publicWrite = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("messages", { body: args.body });
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingReturnValidators;
+    let diagnostics = rule.check(&analysis);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Only the public function should be flagged for missing return validators"
+    );
+    assert!(diagnostics[0].message.contains("publicWrite"));
+}
+
+#[test]
+fn test_missing_auth_check_does_not_skip_similar_filename() {
+    let dir = TempDir::new().unwrap();
+    let conv_dir = dir.path().join("convex");
+    std::fs::create_dir_all(&conv_dir).unwrap();
+    let path = conv_dir.join("_internalization.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { query } from "./_generated/server";
+
+export const getData = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("items").collect();
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingAuthCheck;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "A filename containing `_internal` should not bypass missing-auth-check"
+    );
+}
+
+#[test]
+fn test_missing_http_auth_skips_internal_secret_and_ignore_comment() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("http_internal_secret.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { httpAction } from "convex/server";
+import { v } from "convex/values";
+
+export const webhook = httpAction({
+  args: {
+    internalSecret: v.string(),
+  },
+  handler: async (ctx, request) => {
+    return new Response("ok");
+  },
+});
+
+// convex-doctor-ignore
+export const webhookPublic = httpAction(async (ctx, request) => {
+  return new Response("ok");
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingHttpAuth;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "internalSecret/commented httpAction should skip missing-http-auth, got {:?}",
+        diagnostics
     );
 }

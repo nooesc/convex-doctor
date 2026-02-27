@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, ProjectContext, Rule};
@@ -180,7 +181,7 @@ impl Rule for TooManyIndexes {
                     severity: Severity::Info,
                     category: self.category(),
                     message: format!(
-                        "Table '{}' has {} indexes (limit is 32)",
+                        "Table '{}' has {} indexes (soft warning threshold is 8, hard limit is 32)",
                         table,
                         indexes.len()
                     ),
@@ -234,7 +235,17 @@ impl Rule for OptionalFieldNoDefaultHandling {
         Category::Schema
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        if analysis.file_path.contains("schema") && analysis.optional_schema_fields.len() >= 5 {
+        let is_schema_file = Path::new(&analysis.file_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                matches!(
+                    name,
+                    "schema.ts" | "schema.js" | "schema.mts" | "schema.mjs"
+                )
+            });
+
+        if is_schema_file && analysis.optional_schema_fields.len() >= 5 {
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -317,6 +328,75 @@ impl Rule for MissingIndexForQuery {
                 file: "convex/schema.ts".to_string(),
                 line: ff.line,
                 column: ff.col,
+            })
+            .collect()
+    }
+}
+
+fn normalize_index_token(token: &str) -> String {
+    let mut out = String::new();
+    let mut prev_underscore = false;
+    for ch in token.chars() {
+        let mapped = if ch.is_ascii_alphanumeric() {
+            prev_underscore = false;
+            ch.to_ascii_lowercase()
+        } else if !prev_underscore {
+            prev_underscore = true;
+            '_'
+        } else {
+            continue;
+        };
+        out.push(mapped);
+    }
+    out.trim_matches('_').to_string()
+}
+
+fn expected_index_name(fields: &[String]) -> Option<String> {
+    if fields.is_empty() {
+        return None;
+    }
+    let normalized_fields: Vec<String> = fields
+        .iter()
+        .map(|field| normalize_index_token(field))
+        .filter(|field| !field.is_empty())
+        .collect();
+    if normalized_fields.is_empty() {
+        return None;
+    }
+    Some(format!("by_{}", normalized_fields.join("_and_")))
+}
+
+/// Per-file rule: ensure index names include all fields in order.
+pub struct IndexNameIncludesFields;
+impl Rule for IndexNameIncludesFields {
+    fn id(&self) -> &'static str {
+        "schema/index-name-includes-fields"
+    }
+    fn category(&self) -> Category {
+        Category::Schema
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        analysis
+            .index_definitions
+            .iter()
+            .filter_map(|idx| {
+                let expected = expected_index_name(&idx.fields)?;
+                if idx.name == expected {
+                    return None;
+                }
+                Some(Diagnostic {
+                    rule: self.id().to_string(),
+                    severity: Severity::Warning,
+                    category: self.category(),
+                    message: format!(
+                        "Index name `{}` should include all fields in order (expected `{}`)",
+                        idx.name, expected
+                    ),
+                    help: "Convex index naming convention is `by_field1_and_field2` for fields `[\"field1\", \"field2\"]`.".to_string(),
+                    file: analysis.file_path.clone(),
+                    line: idx.line,
+                    column: 1,
+                })
             })
             .collect()
     }

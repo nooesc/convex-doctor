@@ -17,7 +17,7 @@ fn test_registry_has_all_categories() {
 #[test]
 fn test_registry_rule_count() {
     let registry = RuleRegistry::new();
-    assert_eq!(registry.rules().len(), 65);
+    assert_eq!(registry.rules().len(), 72);
 }
 
 #[test]
@@ -122,6 +122,8 @@ fn test_convex_function_is_public() {
         arg_names: vec![],
         has_return_validator: false,
         has_auth_check: false,
+        has_internal_secret: false,
+        is_intentionally_public: false,
         handler_line_count: 10,
         span_line: 5,
         span_col: 1,
@@ -136,6 +138,8 @@ fn test_convex_function_is_public() {
         arg_names: vec![],
         has_return_validator: false,
         has_auth_check: false,
+        has_internal_secret: false,
+        is_intentionally_public: false,
         handler_line_count: 10,
         span_line: 5,
         span_col: 1,

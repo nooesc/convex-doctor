@@ -1,7 +1,15 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
+
+fn path_has_segment(path: &str, segment: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    Path::new(&normalized)
+        .components()
+        .any(|component| component.as_os_str().to_string_lossy() == segment)
+}
 
 pub struct MissingArgValidators;
 impl Rule for MissingArgValidators {
@@ -15,17 +23,19 @@ impl Rule for MissingArgValidators {
         analysis
             .functions
             .iter()
-            .filter(|f| f.is_public() && !f.has_args_validator)
+            .filter(|f| {
+                f.kind != FunctionKind::HttpAction && !f.has_args_validator
+            })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
                 category: self.category(),
                 message: format!(
-                    "Public {} `{}` has no argument validators",
+                    "{} `{}` has no argument validators",
                     f.kind_str(),
                     f.name
                 ),
-                help: "Add `args: { ... }` with validators for all parameters. Public functions can be called by anyone.".to_string(),
+                help: "Add `args: { ... }` with validators for all parameters. Convex guidance requires validators for query/mutation/action and internal variants.".to_string(),
                 file: analysis.file_path.clone(),
                 line: f.span_line,
                 column: f.span_col,
@@ -46,7 +56,7 @@ impl Rule for MissingReturnValidators {
         analysis
             .functions
             .iter()
-            .filter(|f| !f.has_return_validator)
+            .filter(|f| f.is_public() && !f.has_return_validator)
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -76,10 +86,8 @@ impl Rule for MissingAuthCheck {
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
         // Skip conventional admin/migration directories — public functions in
         // _scripts/ or _internal/ are typically only called from admin tooling.
-        if analysis.file_path.contains("/_scripts/")
-            || analysis.file_path.contains("/_internal/")
-            || analysis.file_path.contains("\\_scripts\\")
-            || analysis.file_path.contains("\\_internal\\")
+        if path_has_segment(&analysis.file_path, "_scripts")
+            || path_has_segment(&analysis.file_path, "_internal")
         {
             return vec![];
         }
@@ -87,7 +95,12 @@ impl Rule for MissingAuthCheck {
         analysis
             .functions
             .iter()
-            .filter(|f| f.is_public() && !f.has_auth_check)
+            .filter(|f| {
+                f.is_public()
+                    && !f.has_auth_check
+                    && !f.has_internal_secret
+                    && !f.is_intentionally_public
+            })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -133,7 +146,7 @@ impl Rule for InternalApiMisuse {
                     .first_arg_chain
                     .as_ref()
                     .is_some_and(|arg| arg.starts_with("api."));
-                chain_matches && arg_is_public_api
+                chain_matches && arg_is_public_api && !call.enclosing_function_has_internal_secret
             })
             .map(|call| Diagnostic {
                 rule: self.id().to_string(),
@@ -237,7 +250,12 @@ impl Rule for SpoofableAccessControl {
         analysis
             .functions
             .iter()
-            .filter(|f| f.is_public() && !f.has_auth_check)
+            .filter(|f| {
+                f.is_public()
+                    && !f.has_auth_check
+                    && !f.has_internal_secret
+                    && !f.is_intentionally_public
+            })
             .filter_map(|f| {
                 let risky_args: Vec<&str> = f
                     .arg_names
@@ -320,7 +338,12 @@ impl Rule for MissingHttpAuth {
         analysis
             .functions
             .iter()
-            .filter(|f| f.kind == FunctionKind::HttpAction && !f.has_auth_check)
+            .filter(|f| {
+                f.kind == FunctionKind::HttpAction
+                    && !f.has_auth_check
+                    && !f.has_internal_secret
+                    && !f.is_intentionally_public
+            })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
@@ -433,6 +456,9 @@ impl Rule for HttpMissingCors {
         // Group routes by path
         let mut routes_by_path: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for route in &analysis.http_routes {
+            if route.is_webhook {
+                continue;
+            }
             routes_by_path
                 .entry(route.path.as_str())
                 .or_default()

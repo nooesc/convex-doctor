@@ -1,3 +1,4 @@
+use crate::diagnostic::{Diagnostic, Severity};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -12,6 +13,7 @@ pub struct Config {
     pub rules: HashMap<String, String>,
     pub ignore: IgnoreConfig,
     pub ci: CiConfig,
+    pub convex: ConvexConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -26,10 +28,35 @@ pub struct CiConfig {
     pub fail_below: u32,
 }
 
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum StrictnessMode {
+    #[default]
+    Tiered,
+    Strict,
+    LowNoise,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ConvexConfig {
+    pub guidance_version: String,
+    pub strictness: StrictnessMode,
+}
+
 impl Default for IgnoreConfig {
     fn default() -> Self {
         IgnoreConfig {
             files: vec!["convex/_generated/**".to_string()],
+        }
+    }
+}
+
+impl Default for ConvexConfig {
+    fn default() -> Self {
+        Self {
+            guidance_version: "v0.241.0".to_string(),
+            strictness: StrictnessMode::Tiered,
         }
     }
 }
@@ -105,6 +132,52 @@ impl Config {
             }
         }
         false
+    }
+
+    pub fn apply_strictness(&self, diagnostics: &mut Vec<Diagnostic>) {
+        match self.convex.strictness {
+            StrictnessMode::Tiered => {}
+            StrictnessMode::Strict => {
+                for diagnostic in diagnostics.iter_mut() {
+                    if diagnostic.severity == Severity::Info {
+                        diagnostic.severity = Severity::Warning;
+                    }
+                }
+            }
+            StrictnessMode::LowNoise => {
+                const SUPPRESSED_WARNING_RULES: &[&str] = &[
+                    "security/missing-auth-check",
+                    "security/missing-return-validators",
+                    "perf/sequential-run-calls",
+                    "perf/helper-vs-run",
+                    "perf/action-from-client",
+                    "correctness/missing-unique",
+                    "correctness/replace-vs-patch",
+                    "schema/index-name-includes-fields",
+                    "schema/optional-field-no-default-handling",
+                    "schema/missing-search-index-filter",
+                    "arch/large-handler",
+                    "arch/monolithic-file",
+                    "arch/duplicated-auth",
+                    "arch/deep-function-chain",
+                    "client/unhandled-loading-state",
+                    "client/action-instead-of-mutation",
+                    "client/missing-convex-provider",
+                ];
+
+                diagnostics.retain(|diagnostic| {
+                    if diagnostic.severity == Severity::Info {
+                        return false;
+                    }
+                    if diagnostic.severity == Severity::Warning
+                        && SUPPRESSED_WARNING_RULES.contains(&diagnostic.rule.as_str())
+                    {
+                        return false;
+                    }
+                    true
+                });
+            }
+        }
     }
 
     fn glob_candidates(pattern: &str) -> Vec<String> {

@@ -1,5 +1,6 @@
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
+use std::collections::HashSet;
 
 pub struct UnboundedCollect;
 impl Rule for UnboundedCollect {
@@ -13,6 +14,7 @@ impl Rule for UnboundedCollect {
         analysis
             .collect_calls
             .iter()
+            .filter(|c| !c.detail.contains(".take."))
             .map(|c| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
@@ -229,16 +231,32 @@ impl Rule for MissingIndexOnForeignKey {
         vec![]
     }
     fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
+        let mut seen = HashSet::<(String, String, String, u32, u32, String)>::new();
         ctx.all_schema_id_fields
             .iter()
             .filter(|id_field| {
-                // Check if any index includes this field_name
+                if id_field.field_name.is_empty() || id_field.table_id.is_empty() || id_field.file.is_empty()
+                {
+                    return false;
+                }
+
+                // Check if any index includes this field on the same table
                 !ctx.all_index_definitions.iter().any(|idx| {
-                    if id_field.field_name.is_empty() {
-                        return false;
-                    }
-                    idx.fields.contains(&id_field.field_name)
+                    !idx.table.is_empty()
+                        && idx.table == id_field.table_id
+                        && idx.fields.contains(&id_field.field_name)
                 })
+            })
+            .filter(|id_field| {
+                let key = (
+                    id_field.file.clone(),
+                    id_field.table_id.clone(),
+                    id_field.field_name.clone(),
+                    id_field.line,
+                    id_field.col,
+                    id_field.table_ref.clone(),
+                );
+                seen.insert(key)
             })
             .map(|id_field| {
                 let message = format!(
@@ -251,7 +269,7 @@ impl Rule for MissingIndexOnForeignKey {
                     category: self.category(),
                     message,
                     help: "Fields with `v.id()` references are commonly queried. Add an index to avoid full table scans.".to_string(),
-                    file: "convex/schema.ts".to_string(),
+                    file: id_field.file.clone(),
                     line: id_field.line,
                     column: id_field.col,
                 }
@@ -354,15 +372,20 @@ impl Rule for NoPaginationForList {
         Category::Performance
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        let has_public_query = analysis
-            .functions
+        let public_query_collect_calls: Vec<_> = analysis
+            .ctx_calls
             .iter()
-            .any(|f| f.kind == FunctionKind::Query);
-        let has_collect = !analysis.collect_calls.is_empty();
+            .filter(|c| {
+                c.enclosing_function_kind == Some(FunctionKind::Query)
+                    && c.chain.starts_with("ctx.db.")
+                    && c.chain.ends_with(".collect")
+                    && !c.chain.contains(".take.")
+            })
+            .collect();
 
-        if has_public_query && has_collect {
+        if !public_query_collect_calls.is_empty() {
             // Emit one diagnostic per file
-            let first_collect = &analysis.collect_calls[0];
+            let first_collect = public_query_collect_calls[0];
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -377,5 +400,46 @@ impl Rule for NoPaginationForList {
         } else {
             vec![]
         }
+    }
+}
+
+/// Per-file rule: when `.paginate(...)` is used, ensure the function accepts
+/// `paginationOpts` validated with `paginationOptsValidator`.
+pub struct MissingPaginationOptsValidator;
+impl Rule for MissingPaginationOptsValidator {
+    fn id(&self) -> &'static str {
+        "perf/missing-pagination-opts-validator"
+    }
+    fn category(&self) -> Category {
+        Category::Performance
+    }
+    fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
+        let functions_with_validator: HashSet<&str> = analysis
+            .pagination_validator_functions
+            .iter()
+            .map(String::as_str)
+            .collect();
+
+        let mut seen = HashSet::<&str>::new();
+        analysis
+            .paginated_functions
+            .iter()
+            .filter(|loc| !loc.detail.is_empty())
+            .filter(|loc| !functions_with_validator.contains(loc.detail.as_str()))
+            .filter(|loc| seen.insert(loc.detail.as_str()))
+            .map(|loc| Diagnostic {
+                rule: self.id().to_string(),
+                severity: Severity::Warning,
+                category: self.category(),
+                message: format!(
+                    "Paginated query `{}` is missing `paginationOptsValidator` in args",
+                    loc.detail
+                ),
+                help: "Add `args: { paginationOpts: paginationOptsValidator, ... }` so clients can pass typed pagination options safely.".to_string(),
+                file: analysis.file_path.clone(),
+                line: loc.line,
+                column: loc.col,
+            })
+            .collect()
     }
 }
