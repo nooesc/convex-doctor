@@ -630,12 +630,12 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         let mut schema_table_id = None;
 
         if let Expression::Identifier(ident) = &it.callee {
-            if ident.name.as_str() == "defineTable" {
-                if it.arguments.first().is_some_and(|arg| {
+            if ident.name.as_str() == "defineTable"
+                && it.arguments.first().is_some_and(|arg| {
                     matches!(arg, Argument::ObjectExpression(_))
-                }) {
-                    schema_table_id = Some(format!("table@{}", it.span.start));
-                }
+                })
+            {
+                schema_table_id = Some(format!("table@{}", it.span.start));
             }
         }
         if let Some(table_id) = schema_table_id.clone() {

@@ -305,7 +305,7 @@ impl Rule for DeepFunctionChain {
                 let is_chunked_action = c
                     .enclosing_function_name
                     .as_deref()
-                    .is_some_and(|name| is_chunked_processing_action(name));
+                    .is_some_and(is_chunked_processing_action);
 
                 is_action
                     && !c.enclosing_function_has_internal_secret
