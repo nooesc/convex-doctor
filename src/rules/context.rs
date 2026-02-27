@@ -45,6 +45,8 @@ struct FunctionBuilder {
     has_args_validator: bool,
     has_any_validator_in_args: bool,
     arg_names: Vec<String>,
+    has_internal_secret: bool,
+    is_intentionally_public: bool,
     has_return_validator: bool,
     has_auth_check: bool,
     handler_line_count: u32,
@@ -60,6 +62,8 @@ impl FunctionBuilder {
             has_args_validator: self.has_args_validator,
             has_any_validator_in_args: self.has_any_validator_in_args,
             arg_names: self.arg_names,
+            has_internal_secret: self.has_internal_secret,
+            is_intentionally_public: self.is_intentionally_public,
             has_return_validator: self.has_return_validator,
             has_auth_check: self.has_auth_check,
             handler_line_count: self.handler_line_count,
@@ -72,6 +76,7 @@ impl FunctionBuilder {
 /// Visitor that walks the AST to extract Convex-specific patterns.
 struct ConvexVisitor<'a> {
     source_text: &'a str,
+    source_lines: Vec<&'a str>,
     analysis: FileAnalysis,
     loop_depth: u32,
     in_await: bool,
@@ -85,6 +90,7 @@ struct ConvexVisitor<'a> {
     max_validator_nesting_depth: u32,
     collect_variables: HashSet<String>,
     current_object_property_name: Option<String>,
+    schema_table_id_stack: Vec<String>,
     pending_functions: HashMap<String, ConvexFunction>,
 }
 
@@ -92,6 +98,7 @@ impl<'a> ConvexVisitor<'a> {
     fn new(path: &Path, source_text: &'a str) -> Self {
         Self {
             source_text,
+            source_lines: source_text.lines().collect(),
             analysis: FileAnalysis {
                 file_path: path.display().to_string(),
                 ..Default::default()
@@ -108,6 +115,7 @@ impl<'a> ConvexVisitor<'a> {
             max_validator_nesting_depth: 0,
             collect_variables: HashSet::new(),
             current_object_property_name: None,
+            schema_table_id_stack: vec![],
             pending_functions: HashMap::new(),
         }
     }
@@ -233,6 +241,132 @@ impl<'a> ConvexVisitor<'a> {
             },
             _ => false,
         }
+    }
+
+    fn has_doctor_ignore_comment(source_lines: &[&str], line: u32) -> bool {
+        if line == 0 {
+            return false;
+        }
+
+        let target = line.saturating_sub(1) as isize;
+        let mut start = target.saturating_sub(2);
+        if start < 0 {
+            start = 0;
+        }
+
+        for idx in start..=target {
+            let Some(line_text) = source_lines.get(idx as usize) else {
+                continue;
+            };
+            if line_text
+                .to_ascii_lowercase()
+                .contains("convex-doctor-ignore")
+            {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn callee_name(expr: &Expression<'_>) -> Option<String> {
+        match expr {
+            Expression::Identifier(ident) => Some(ident.name.as_str().to_string()),
+            Expression::StaticMemberExpression(mem) => {
+                Some(mem.property.name.as_str().to_string())
+            }
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(call) => Self::callee_name(&call.callee),
+                ChainElement::StaticMemberExpression(mem) => {
+                    Some(mem.property.name.as_str().to_string())
+                }
+                _ => None,
+            },
+            Expression::CallExpression(call) => Self::callee_name(&call.callee),
+            _ => None,
+        }
+    }
+
+    fn expression_has_identifier(expr: &Expression<'_>, target: &str) -> bool {
+        match expr {
+            Expression::Identifier(ident) => ident.name.as_str() == target,
+            Expression::StaticMemberExpression(mem) => {
+                Self::expression_has_identifier(&mem.object, target)
+            }
+            Expression::CallExpression(call) => {
+                Self::expression_has_identifier(&call.callee, target)
+                    || call
+                        .arguments
+                        .iter()
+                        .any(|arg| arg.as_expression().is_some_and(|e| {
+                            Self::expression_has_identifier(e, target)
+                        }))
+            }
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(call) => {
+                    Self::expression_has_identifier(&call.callee, target)
+                }
+                ChainElement::StaticMemberExpression(mem) => {
+                    Self::expression_has_identifier(&mem.object, target)
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn call_uses_auth_helper(call: &CallExpression<'_>) -> bool {
+        let Some(callee_name) = Self::callee_name(&call.callee) else {
+            return false;
+        };
+
+        let name = callee_name.to_ascii_lowercase();
+        let known_helpers = [
+            "requireadmin",
+            "requireauth",
+            "requireuser",
+            "verifytoken",
+            "verifyjwt",
+            "ensureauthenticated",
+            "assertauthenticated",
+            "getauthenticateduser",
+            "parseauthheader",
+        ];
+
+        if !call.arguments.is_empty()
+            && known_helpers.contains(&name.as_str())
+            && call.arguments.iter().any(|arg| {
+                arg.as_expression().is_some_and(|expr| {
+                    Self::expression_has_identifier(expr, "ctx")
+                        || Self::expression_has_identifier(expr, "request")
+                })
+            })
+        {
+            return true;
+        }
+
+        if call
+            .arguments
+            .iter()
+            .any(|arg| {
+                arg.as_expression().is_some_and(|expr| {
+                    Self::expression_has_identifier(expr, "ctx")
+                        || Self::expression_has_identifier(expr, "request")
+                })
+            })
+            && ["require", "ensure", "assert", "verify"].iter().any(|prefix| {
+                name.starts_with(prefix)
+            })
+            && (name.contains("auth")
+                || name.contains("token")
+                || name.contains("user")
+                || name.contains("admin")
+                || name.contains("session"))
+        {
+            return true;
+        }
+
+        false
     }
 
     /// Check if a call expression is a ctx.* call.
@@ -493,6 +627,20 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         let (line, col) = self.line_col(it.span.start);
         let prev_function_kind = self.current_function_kind.clone();
         let mut started_exported_function = false;
+        let mut schema_table_id = None;
+
+        if let Expression::Identifier(ident) = &it.callee {
+            if ident.name.as_str() == "defineTable" {
+                if it.arguments.first().is_some_and(|arg| {
+                    matches!(arg, Argument::ObjectExpression(_))
+                }) {
+                    schema_table_id = Some(format!("table@{}", it.span.start));
+                }
+            }
+        }
+        if let Some(table_id) = schema_table_id.clone() {
+            self.schema_table_id_stack.push(table_id);
+        }
 
         // Check if this is a Convex function definition: query({...}), mutation({...}), etc.
         let mut is_direct_export = false;
@@ -505,6 +653,10 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 let mut builder = FunctionBuilder {
                     name: name.clone(),
                     kind: Some(kind.clone()),
+                    is_intentionally_public: Self::has_doctor_ignore_comment(
+                        &self.source_lines,
+                        line,
+                    ),
                     span_line: line,
                     span_col: col,
                     ..Default::default()
@@ -531,6 +683,12 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                                                         .map(|n| n.to_string());
                                                     if let Some(ref arg_name) = arg_name_str {
                                                         builder.arg_names.push(arg_name.clone());
+                                                        if matches!(
+                                                            arg_name.to_ascii_lowercase().as_str(),
+                                                            "internalsecret" | "internal_secret"
+                                                        ) {
+                                                            builder.has_internal_secret = true;
+                                                        }
                                                     }
 
                                                     // Check for v.any() in arg values
@@ -721,6 +879,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         .and_then(|expr| Self::resolve_member_chain(expr))
                 });
 
+                let (enclosing_function_name, enclosing_function_has_internal_secret) =
+                    match self.current_builder_mut() {
+                        Some(builder) => (
+                            Some(builder.name.clone()),
+                            builder.has_internal_secret,
+                        ),
+                        None => (None, false),
+                    };
+
                 let ctx_call = CtxCall {
                     chain: chain.clone(),
                     line,
@@ -729,6 +896,8 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     is_returned: self.in_return,
                     assigned_to: self.current_assignment_target.clone(),
                     enclosing_function_kind: self.current_function_kind.clone(),
+                    enclosing_function_name,
+                    enclosing_function_has_internal_secret,
                     first_arg_chain,
                 };
                 self.analysis.ctx_calls.push(ctx_call);
@@ -866,6 +1035,11 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                 builder.has_auth_check = true;
             }
         }
+        if Self::call_uses_auth_helper(it) {
+            if let Some(builder) = self.current_builder_mut() {
+                builder.has_auth_check = true;
+            }
+        }
 
         // --- NEW DETECTION PATTERNS ---
 
@@ -969,9 +1143,27 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                             }
                         }
                         if let (Some(m), Some(p)) = (method, path) {
+                            let path_contains_webhook = p.to_ascii_lowercase().contains("webhook");
+                            let mut comment_marks_webhook = false;
+                            if line > 0 {
+                                let route_line_index = usize::try_from(line.saturating_sub(1)).ok();
+                                if let Some(route_idx) = route_line_index {
+                                    let start = route_idx.saturating_sub(3);
+                                    for idx in start..=route_idx {
+                                        if let Some(raw_line) = self.source_lines.get(idx) {
+                                            let text = raw_line.to_ascii_lowercase();
+                                            if text.contains("webhook") {
+                                                comment_marks_webhook = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             self.analysis.http_routes.push(HttpRoute {
                                 method: m,
                                 path: p,
+                                is_webhook: path_contains_webhook || comment_marks_webhook,
                                 line,
                             });
                         }
@@ -987,15 +1179,23 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     if let Some(first_arg) = it.arguments.first() {
                         if let Some(Expression::StringLiteral(s)) = first_arg.as_expression() {
                             let table_ref = s.value.as_str().to_string();
-                            self.analysis.schema_id_fields.push(SchemaIdField {
-                                field_name: self
-                                    .current_object_property_name
-                                    .clone()
-                                    .unwrap_or_default(),
-                                table_ref,
-                                line,
-                                col,
-                            });
+                            if self.schema_table_id_stack.last().is_some() {
+                                self.analysis.schema_id_fields.push(SchemaIdField {
+                                    field_name: self
+                                        .current_object_property_name
+                                        .clone()
+                                        .unwrap_or_default(),
+                                    table_ref,
+                                    table_id: self
+                                        .schema_table_id_stack
+                                        .last()
+                                        .cloned()
+                                        .unwrap_or_default(),
+                                    file: self.analysis.file_path.clone(),
+                                    line,
+                                    col,
+                                });
+                            }
                         }
                     }
                 }
@@ -1118,6 +1318,9 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         }
 
         walk::walk_call_expression(self, it);
+        if schema_table_id.is_some() {
+            self.schema_table_id_stack.pop();
+        }
 
         if started_exported_function {
             if let Some(builder) = self.function_builder_stack.pop() {

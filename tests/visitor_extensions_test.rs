@@ -427,6 +427,35 @@ export default defineSchema({
         .any(|f| f.table_ref == "categories"));
 }
 
+#[test]
+fn test_schema_id_fields_ignore_non_schema_context() {
+    let analysis = analyze_ts(
+        r#"
+import { query, mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const getCreator = query({
+  args: { creatorId: v.id("creators") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.creatorId);
+  },
+});
+
+export const create = mutation({
+  args: { input: v.object({ postId: v.id("posts") }) },
+  handler: async (ctx, args) => {
+    return args;
+  },
+});
+"#,
+    );
+    assert!(
+        analysis.schema_id_fields.is_empty(),
+        "schema_id_fields should only track table schema fields, found {} entries",
+        analysis.schema_id_fields.len()
+    );
+}
+
 // --------------------------------------------------------------------------
 // 10. Filter field names
 // --------------------------------------------------------------------------

@@ -54,6 +54,8 @@ pub struct ConvexFunction {
     pub has_args_validator: bool,
     pub has_any_validator_in_args: bool,
     pub arg_names: Vec<String>,
+    pub has_internal_secret: bool,
+    pub is_intentionally_public: bool,
     pub has_return_validator: bool,
     pub has_auth_check: bool,
     pub handler_line_count: u32,
@@ -142,6 +144,8 @@ pub struct CtxCall {
     pub is_returned: bool,
     pub assigned_to: Option<String>,
     pub enclosing_function_kind: Option<FunctionKind>,
+    pub enclosing_function_name: Option<String>,
+    pub enclosing_function_has_internal_secret: bool,
     pub first_arg_chain: Option<String>,
 }
 
@@ -172,6 +176,7 @@ pub struct IndexDef {
 pub struct HttpRoute {
     pub method: String,
     pub path: String,
+    pub is_webhook: bool,
     pub line: u32,
 }
 
@@ -179,6 +184,8 @@ pub struct HttpRoute {
 pub struct SchemaIdField {
     pub field_name: String,
     pub table_ref: String,
+    pub table_id: String,
+    pub file: String,
     pub line: u32,
     pub col: u32,
 }

@@ -18,6 +18,8 @@ fn test_missing_index_on_foreign_key_fires() {
         all_schema_id_fields: vec![SchemaIdField {
             field_name: "userId".to_string(),
             table_ref: "users".to_string(),
+            table_id: "table@users".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
             line: 5,
             col: 10,
         }],
@@ -40,11 +42,13 @@ fn test_missing_index_on_foreign_key_not_fired_when_index_exists() {
         all_schema_id_fields: vec![SchemaIdField {
             field_name: "userId".to_string(),
             table_ref: "users".to_string(),
+            table_id: "table@users".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
             line: 5,
             col: 10,
         }],
         all_index_definitions: vec![IndexDef {
-            table: "posts".to_string(),
+            table: "table@users".to_string(),
             name: "by_user".to_string(),
             fields: vec!["userId".to_string()],
             line: 10,
@@ -52,9 +56,37 @@ fn test_missing_index_on_foreign_key_not_fired_when_index_exists() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-    assert!(
-        diagnostics.is_empty(),
+        assert!(
+            diagnostics.is_empty(),
         "Should not flag when an index includes the field"
+        );
+}
+
+#[test]
+fn test_missing_index_on_foreign_key_matches_table_specific() {
+    let rule = MissingIndexOnForeignKey;
+    let ctx = ProjectContext {
+        all_schema_id_fields: vec![SchemaIdField {
+            field_name: "userId".to_string(),
+            table_ref: "users".to_string(),
+            table_id: "table@users".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
+            line: 5,
+            col: 10,
+        }],
+        all_index_definitions: vec![IndexDef {
+            table: "table@orders".to_string(),
+            name: "by_user".to_string(),
+            fields: vec!["userId".to_string()],
+            line: 10,
+        }],
+        ..Default::default()
+    };
+    let diagnostics = rule.check_project(&ctx);
+    assert_eq!(diagnostics.len(), 1);
+    assert!(
+        diagnostics[0].message.contains("users"),
+        "Should flag when matching field is on a different table"
     );
 }
 
@@ -65,6 +97,8 @@ fn test_missing_index_on_foreign_key_empty_field_name() {
         all_schema_id_fields: vec![SchemaIdField {
             field_name: "".to_string(), // empty field name
             table_ref: "users".to_string(),
+            table_id: "".to_string(),
+            file: "tests/fixtures/perf_patterns.ts".to_string(),
             line: 5,
             col: 10,
         }],
@@ -72,10 +106,7 @@ fn test_missing_index_on_foreign_key_empty_field_name() {
         ..Default::default()
     };
     let diagnostics = rule.check_project(&ctx);
-    // Empty field_name means no index can match (the filter closure returns false for empty),
-    // so a diagnostic IS emitted.
-    assert_eq!(diagnostics.len(), 1);
-    assert!(diagnostics[0].message.contains("users"));
+    assert!(diagnostics.is_empty(), "Empty field names should be skipped");
 }
 
 #[test]
@@ -121,6 +152,8 @@ fn test_action_from_client_ignores_internal_action() {
             arg_names: vec![],
             has_return_validator: false,
             has_auth_check: false,
+            has_internal_secret: false,
+            is_intentionally_public: false,
             handler_line_count: 10,
             span_line: 1,
             span_col: 1,
@@ -147,6 +180,8 @@ fn test_action_from_client_ignores_queries_and_mutations() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 1,
                 span_col: 1,
@@ -159,6 +194,8 @@ fn test_action_from_client_ignores_queries_and_mutations() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 10,
                 span_col: 1,
@@ -319,6 +356,8 @@ fn test_no_pagination_for_list_no_public_query() {
             arg_names: vec![],
             has_return_validator: false,
             has_auth_check: false,
+            has_internal_secret: false,
+            is_intentionally_public: false,
             handler_line_count: 5,
             span_line: 1,
             span_col: 1,
@@ -349,6 +388,8 @@ fn test_no_pagination_for_list_no_collect() {
             arg_names: vec![],
             has_return_validator: false,
             has_auth_check: false,
+            has_internal_secret: false,
+            is_intentionally_public: false,
             handler_line_count: 5,
             span_line: 1,
             span_col: 1,
@@ -376,6 +417,8 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 1,
                 span_col: 1,
@@ -388,6 +431,8 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
                 arg_names: vec![],
                 has_return_validator: false,
                 has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
                 handler_line_count: 5,
                 span_line: 10,
                 span_col: 1,

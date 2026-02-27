@@ -1,5 +1,6 @@
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
+use std::collections::HashSet;
 
 pub struct UnboundedCollect;
 impl Rule for UnboundedCollect {
@@ -229,16 +230,32 @@ impl Rule for MissingIndexOnForeignKey {
         vec![]
     }
     fn check_project(&self, ctx: &ProjectContext) -> Vec<Diagnostic> {
+        let mut seen = HashSet::<(String, String, String, u32, u32, String)>::new();
         ctx.all_schema_id_fields
             .iter()
             .filter(|id_field| {
-                // Check if any index includes this field_name
+                if id_field.field_name.is_empty() || id_field.table_id.is_empty() || id_field.file.is_empty()
+                {
+                    return false;
+                }
+
+                // Check if any index includes this field on the same table
                 !ctx.all_index_definitions.iter().any(|idx| {
-                    if id_field.field_name.is_empty() {
-                        return false;
-                    }
-                    idx.fields.contains(&id_field.field_name)
+                    !idx.table.is_empty()
+                        && idx.table == id_field.table_id
+                        && idx.fields.contains(&id_field.field_name)
                 })
+            })
+            .filter(|id_field| {
+                let key = (
+                    id_field.file.clone(),
+                    id_field.table_id.clone(),
+                    id_field.field_name.clone(),
+                    id_field.line,
+                    id_field.col,
+                    id_field.table_ref.clone(),
+                );
+                seen.insert(key)
             })
             .map(|id_field| {
                 let message = format!(
@@ -251,7 +268,7 @@ impl Rule for MissingIndexOnForeignKey {
                     category: self.category(),
                     message,
                     help: "Fields with `v.id()` references are commonly queried. Add an index to avoid full table scans.".to_string(),
-                    file: "convex/schema.ts".to_string(),
+                    file: id_field.file.clone(),
                     line: id_field.line,
                     column: id_field.col,
                 }

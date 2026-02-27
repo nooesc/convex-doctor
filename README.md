@@ -35,7 +35,18 @@ Tested against 18 open-source Convex applications
 
 ## Installation
 
-### Download prebuilt binary (recommended)
+### npm (recommended)
+
+```sh
+# Run without installing
+npx convex-doctor
+
+# Or install globally
+npm install -g convex-doctor
+convex-doctor
+```
+
+### Download prebuilt binary
 
 Grab the latest release for your platform from [GitHub Releases](https://github.com/nooesc/convex-doctor/releases/latest):
 

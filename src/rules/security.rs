@@ -15,7 +15,11 @@ impl Rule for MissingArgValidators {
         analysis
             .functions
             .iter()
-            .filter(|f| f.is_public() && !f.has_args_validator)
+            .filter(|f| {
+                f.is_public()
+                    && f.kind != FunctionKind::HttpAction
+                    && !f.has_args_validator
+            })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
@@ -87,7 +91,12 @@ impl Rule for MissingAuthCheck {
         analysis
             .functions
             .iter()
-            .filter(|f| f.is_public() && !f.has_auth_check)
+            .filter(|f| {
+                f.is_public()
+                    && !f.has_auth_check
+                    && !f.has_internal_secret
+                    && !f.is_intentionally_public
+            })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -133,7 +142,7 @@ impl Rule for InternalApiMisuse {
                     .first_arg_chain
                     .as_ref()
                     .is_some_and(|arg| arg.starts_with("api."));
-                chain_matches && arg_is_public_api
+                chain_matches && arg_is_public_api && !call.enclosing_function_has_internal_secret
             })
             .map(|call| Diagnostic {
                 rule: self.id().to_string(),
@@ -237,7 +246,12 @@ impl Rule for SpoofableAccessControl {
         analysis
             .functions
             .iter()
-            .filter(|f| f.is_public() && !f.has_auth_check)
+            .filter(|f| {
+                f.is_public()
+                    && !f.has_auth_check
+                    && !f.has_internal_secret
+                    && !f.is_intentionally_public
+            })
             .filter_map(|f| {
                 let risky_args: Vec<&str> = f
                     .arg_names
@@ -320,7 +334,12 @@ impl Rule for MissingHttpAuth {
         analysis
             .functions
             .iter()
-            .filter(|f| f.kind == FunctionKind::HttpAction && !f.has_auth_check)
+            .filter(|f| {
+                f.kind == FunctionKind::HttpAction
+                    && !f.has_auth_check
+                    && !f.has_internal_secret
+                    && !f.is_intentionally_public
+            })
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
@@ -433,6 +452,9 @@ impl Rule for HttpMissingCors {
         // Group routes by path
         let mut routes_by_path: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
         for route in &analysis.http_routes {
+            if route.is_webhook {
+                continue;
+            }
             routes_by_path
                 .entry(route.path.as_str())
                 .or_default()

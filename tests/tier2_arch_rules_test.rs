@@ -19,7 +19,9 @@ fn action_without_scheduling_flags_run_action_in_mutation() {
             is_returned: false,
             assigned_to: None,
             enclosing_function_kind: Some(FunctionKind::Mutation),
+            enclosing_function_name: None,
             first_arg_chain: None,
+            enclosing_function_has_internal_secret: false,
         }],
         ..Default::default()
     };
@@ -44,7 +46,9 @@ fn action_without_scheduling_flags_run_action_in_internal_mutation() {
             is_returned: false,
             assigned_to: None,
             enclosing_function_kind: Some(FunctionKind::InternalMutation),
+            enclosing_function_name: None,
             first_arg_chain: None,
+            enclosing_function_has_internal_secret: false,
         }],
         ..Default::default()
     };
@@ -66,7 +70,9 @@ fn action_without_scheduling_ignores_run_action_in_action() {
             is_returned: false,
             assigned_to: None,
             enclosing_function_kind: Some(FunctionKind::Action),
+            enclosing_function_name: None,
             first_arg_chain: None,
+            enclosing_function_has_internal_secret: false,
         }],
         ..Default::default()
     };
@@ -88,7 +94,9 @@ fn action_without_scheduling_ignores_run_query_in_mutation() {
             is_returned: false,
             assigned_to: None,
             enclosing_function_kind: Some(FunctionKind::Mutation),
+            enclosing_function_name: None,
             first_arg_chain: None,
+            enclosing_function_has_internal_secret: false,
         }],
         ..Default::default()
     };
@@ -148,6 +156,8 @@ fn make_function(name: &str, kind: FunctionKind) -> ConvexFunction {
         arg_names: vec![],
         has_return_validator: false,
         has_auth_check: false,
+        has_internal_secret: false,
+        is_intentionally_public: false,
         handler_line_count: 10,
         span_line: 1,
         span_col: 1,
@@ -245,6 +255,8 @@ fn make_large_function(name: &str, kind: FunctionKind, lines: u32) -> ConvexFunc
         arg_names: vec![],
         has_return_validator: false,
         has_auth_check: false,
+        has_internal_secret: false,
+        is_intentionally_public: false,
         handler_line_count: lines,
         span_line: 1,
         span_col: 1,
@@ -345,6 +357,23 @@ fn no_helper_functions_emits_only_one_diagnostic() {
     assert!(diagnostics[0].message.contains("4 handlers"));
 }
 
+#[test]
+fn no_helper_functions_does_not_flag_simple_crud_files() {
+    let analysis = FileAnalysis {
+        file_path: "convex/crud.ts".to_string(),
+        functions: vec![
+            make_large_function("listUsers", FunctionKind::Query, 20),
+            make_large_function("getUser", FunctionKind::Query, 25),
+            make_large_function("createUser", FunctionKind::Mutation, 30),
+        ],
+        unexported_function_count: 0,
+        ..Default::default()
+    };
+    let rule = NoHelperFunctions;
+    let diagnostics = rule.check(&analysis);
+    assert!(diagnostics.is_empty());
+}
+
 // ── DeepFunctionChain ────────────────────────────────────────────────
 
 fn make_action_ctx_call(chain: &str, line: u32) -> CtxCall {
@@ -356,7 +385,9 @@ fn make_action_ctx_call(chain: &str, line: u32) -> CtxCall {
         is_returned: false,
         assigned_to: None,
         enclosing_function_kind: Some(FunctionKind::Action),
+        enclosing_function_name: None,
         first_arg_chain: None,
+        enclosing_function_has_internal_secret: false,
     }
 }
 
@@ -381,6 +412,71 @@ fn deep_function_chain_flags_four_or_more_run_calls() {
 }
 
 #[test]
+fn deep_function_chain_skips_internal_secret_actions() {
+    let analysis = FileAnalysis {
+        file_path: "convex/chunked.ts".to_string(),
+        ctx_calls: vec![
+            CtxCall {
+                chain: "ctx.runQuery".to_string(),
+                line: 5,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("syncUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: true,
+            },
+            CtxCall {
+                chain: "ctx.runMutation".to_string(),
+                line: 10,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("syncUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: true,
+            },
+            CtxCall {
+                chain: "ctx.runQuery".to_string(),
+                line: 15,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("syncUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: true,
+            },
+            CtxCall {
+                chain: "ctx.runMutation".to_string(),
+                line: 20,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("syncUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: true,
+            },
+        ],
+        ..Default::default()
+        };
+        let rule = DeepFunctionChain;
+        let diagnostics = rule.check(&analysis);
+        assert!(diagnostics.is_empty());
+}
+
+#[test]
 fn deep_function_chain_clean_with_three_calls() {
     let analysis = FileAnalysis {
         file_path: "convex/orchestrate.ts".to_string(),
@@ -388,6 +484,71 @@ fn deep_function_chain_clean_with_three_calls() {
             make_action_ctx_call("ctx.runQuery", 5),
             make_action_ctx_call("ctx.runMutation", 10),
             make_action_ctx_call("ctx.runQuery", 15),
+        ],
+        ..Default::default()
+    };
+    let rule = DeepFunctionChain;
+    let diagnostics = rule.check(&analysis);
+    assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn deep_function_chain_skips_sync_backfill_named_actions() {
+    let analysis = FileAnalysis {
+        file_path: "convex/chunked.ts".to_string(),
+        ctx_calls: vec![
+            CtxCall {
+                chain: "ctx.runQuery".to_string(),
+                line: 5,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("backfillUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
+            },
+            CtxCall {
+                chain: "ctx.runMutation".to_string(),
+                line: 10,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("backfillUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
+            },
+            CtxCall {
+                chain: "ctx.runQuery".to_string(),
+                line: 15,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("backfillUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
+            },
+            CtxCall {
+                chain: "ctx.runMutation".to_string(),
+                line: 20,
+                col: 5,
+
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Action),
+                enclosing_function_name: Some("backfillUsers".to_string()),
+                first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
+            },
         ],
         ..Default::default()
     };
@@ -428,7 +589,9 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::Mutation),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
             CtxCall {
                 chain: "ctx.runQuery".to_string(),
@@ -439,7 +602,9 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::Mutation),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
             CtxCall {
                 chain: "ctx.runQuery".to_string(),
@@ -450,7 +615,9 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::Mutation),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
             CtxCall {
                 chain: "ctx.runQuery".to_string(),
@@ -461,7 +628,9 @@ fn deep_function_chain_ignores_calls_in_mutations() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::Mutation),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
         ],
         ..Default::default()
@@ -485,7 +654,9 @@ fn deep_function_chain_counts_internal_actions_too() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::InternalAction),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
             CtxCall {
                 chain: "ctx.runMutation".to_string(),
@@ -496,7 +667,9 @@ fn deep_function_chain_counts_internal_actions_too() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::InternalAction),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
             CtxCall {
                 chain: "ctx.runQuery".to_string(),
@@ -507,7 +680,9 @@ fn deep_function_chain_counts_internal_actions_too() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::InternalAction),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
             CtxCall {
                 chain: "ctx.runMutation".to_string(),
@@ -518,7 +693,9 @@ fn deep_function_chain_counts_internal_actions_too() {
                 is_returned: false,
                 assigned_to: None,
                 enclosing_function_kind: Some(FunctionKind::InternalAction),
+                enclosing_function_name: None,
                 first_arg_chain: None,
+                enclosing_function_has_internal_secret: false,
             },
         ],
         ..Default::default()

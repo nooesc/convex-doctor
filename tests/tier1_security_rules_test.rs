@@ -130,6 +130,35 @@ export const webhook = httpAction(async (ctx, request) => {
 }
 
 #[test]
+fn test_missing_http_auth_not_flagged_with_helper() {
+    let analysis = analyze_ts(
+        r#"
+import { httpAction } from "convex/server";
+
+async function requireAdmin(ctx: unknown, request: Request) {
+  const identity = await ctx.auth.getUserIdentity();
+  return { ok: Boolean(identity) };
+}
+
+export const webhook = httpAction(async (ctx, request) => {
+  const admin = await requireAdmin(ctx, request);
+  if (!admin.ok) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+  return new Response("ok");
+});
+"#,
+    );
+    let rule = MissingHttpAuth;
+    let diags = rule.check(&analysis);
+    assert!(
+        diags.is_empty(),
+        "Should NOT flag httpAction using a helper auth check, got: {:?}",
+        diags
+    );
+}
+
+#[test]
 fn test_missing_http_auth_not_flagged_for_non_http() {
     let analysis = analyze_ts(
         r#"
@@ -495,6 +524,68 @@ export default http;
     assert!(
         diags[0].message.contains("/api/webhooks"),
         "Should flag the path without OPTIONS"
+    );
+}
+
+#[test]
+fn test_http_missing_cors_skips_webhook_routes() {
+    let analysis = analyze_ts(
+        r#"
+import { httpRouter } from "convex/server";
+
+const http = httpRouter();
+
+http.route({
+  method: "POST",
+  path: "/api/webhook/order-created",
+  handler: async (ctx, req) => new Response("ok"),
+});
+
+http.route({
+  method: "GET",
+  path: "/api/public",
+  handler: async (ctx, req) => new Response("ok"),
+});
+
+export default http;
+"#,
+    );
+    let rule = HttpMissingCors;
+    let diags = rule.check(&analysis);
+    assert!(
+        diags.len() == 1,
+        "Only /api/public should be flagged, got: {:?}",
+        diags
+    );
+    assert!(
+        diags[0].message.contains("/api/public"),
+        "Should flag the non-webhook path"
+    );
+}
+
+#[test]
+fn test_http_missing_cors_skips_comment_marked_webhook_routes() {
+    let analysis = analyze_ts(
+        r#"
+import { httpRouter } from "convex/server";
+
+const http = httpRouter();
+
+// Webhook endpoint for async SMS callbacks
+http.route({
+  method: "POST",
+  path: "/simple-texting",
+  handler: async (ctx, req) => new Response("ok"),
+});
+
+export default http;
+"#,
+    );
+    let rule = HttpMissingCors;
+    let diags = rule.check(&analysis);
+    assert!(
+        diags.is_empty(),
+        "Should skip webhook routes without OPTIONS handler when comment indicates webhook context"
     );
 }
 
