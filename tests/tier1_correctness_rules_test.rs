@@ -583,6 +583,10 @@ fn test_generated_code_modified_detected() {
     let diagnostics = rule.check_project(&ctx);
     assert_eq!(diagnostics.len(), 1);
     assert!(diagnostics[0].message.contains("convex/_generated/"));
+    assert_eq!(
+        diagnostics[0].severity,
+        convex_doctor::diagnostic::Severity::Error
+    );
 }
 
 #[test]

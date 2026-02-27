@@ -160,6 +160,17 @@ fn test_hardcoded_secrets() {
 }
 
 #[test]
+fn test_hardcoded_secrets_rule_emits_diagnostics() {
+    let analysis = analyze_file(Path::new("tests/fixtures/secrets_test.ts")).unwrap();
+    let rule = HardcodedSecrets;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "hardcoded-secrets rule should emit diagnostics when secrets are found"
+    );
+}
+
+#[test]
 fn test_spoofable_access_control_detected() {
     let analysis = analyze_file(Path::new("tests/fixtures/spoofable_access.ts")).unwrap();
     let rule = SpoofableAccessControl;
@@ -296,6 +307,103 @@ export const callInternal = mutation({
         diagnostics.is_empty(),
         "internalSecret should suppress internal API misuse, got {:?}",
         diagnostics
+    );
+}
+
+#[test]
+fn test_internal_api_misuse_detects_scheduler_public_api_reference() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("scheduler_public_api.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { mutation } from "convex/server";
+import { api } from "../_generated/api";
+
+export const trigger = mutation({
+  args: {},
+  handler: async (ctx) => {
+    await ctx.scheduler.runAfter(0, api.tasks.cleanup);
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = InternalApiMisuse;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "scheduler runAfter with api.* should be flagged as internal-api-misuse"
+    );
+}
+
+#[test]
+fn test_missing_return_validators_skips_internal_functions() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("internal_no_returns.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { internalMutation, mutation } from "convex/server";
+import { v } from "convex/values";
+
+export const internalWrite = internalMutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("messages", { body: args.body });
+  },
+});
+
+export const publicWrite = mutation({
+  args: { body: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("messages", { body: args.body });
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingReturnValidators;
+    let diagnostics = rule.check(&analysis);
+    assert_eq!(
+        diagnostics.len(),
+        1,
+        "Only the public function should be flagged for missing return validators"
+    );
+    assert!(diagnostics[0].message.contains("publicWrite"));
+}
+
+#[test]
+fn test_missing_auth_check_does_not_skip_similar_filename() {
+    let dir = TempDir::new().unwrap();
+    let conv_dir = dir.path().join("convex");
+    std::fs::create_dir_all(&conv_dir).unwrap();
+    let path = conv_dir.join("_internalization.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { query } from "./_generated/server";
+
+export const getData = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("items").collect();
+  },
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = MissingAuthCheck;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "A filename containing `_internal` should not bypass missing-auth-check"
     );
 }
 

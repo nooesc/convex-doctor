@@ -10,6 +10,24 @@ fn is_crud_like_name(name: &str) -> bool {
         return false;
     }
 
+    const NON_SIMPLE_HINTS: &[&str] = &[
+        "cache",
+        "cached",
+        "helper",
+        "util",
+        "service",
+        "sync",
+        "backfill",
+        "batch",
+        "process",
+    ];
+    if NON_SIMPLE_HINTS
+        .iter()
+        .any(|token| normalized.contains(token))
+    {
+        return false;
+    }
+
     const CRUD_PREFIXES: &[&str] = &[
         "get",
         "list",

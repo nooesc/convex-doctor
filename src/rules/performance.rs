@@ -14,6 +14,7 @@ impl Rule for UnboundedCollect {
         analysis
             .collect_calls
             .iter()
+            .filter(|c| !c.detail.contains(".take."))
             .map(|c| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Error,
@@ -371,15 +372,20 @@ impl Rule for NoPaginationForList {
         Category::Performance
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        let has_public_query = analysis
-            .functions
+        let public_query_collect_calls: Vec<_> = analysis
+            .ctx_calls
             .iter()
-            .any(|f| f.kind == FunctionKind::Query);
-        let has_collect = !analysis.collect_calls.is_empty();
+            .filter(|c| {
+                c.enclosing_function_kind == Some(FunctionKind::Query)
+                    && c.chain.starts_with("ctx.db.")
+                    && c.chain.ends_with(".collect")
+                    && !c.chain.contains(".take.")
+            })
+            .collect();
 
-        if has_public_query && has_collect {
+        if !public_query_collect_calls.is_empty() {
             // Emit one diagnostic per file
-            let first_collect = &analysis.collect_calls[0];
+            let first_collect = public_query_collect_calls[0];
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,

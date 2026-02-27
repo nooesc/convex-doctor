@@ -86,3 +86,36 @@ export default defineSchema({
         "Indexes from different tables should not be compared as redundant"
     );
 }
+
+#[test]
+fn test_redundant_index_detected_with_define_table_alias() {
+    let dir = TempDir::new().unwrap();
+    let schema_path = dir.path().join("schema.ts");
+    std::fs::write(
+        &schema_path,
+        r#"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+const posts = defineTable({
+  authorId: v.id("users"),
+  title: v.string(),
+});
+
+export default defineSchema({
+  posts: posts
+    .index("by_author", ["authorId"])
+    .index("by_author_title", ["authorId", "title"]),
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&schema_path).unwrap();
+    let rule = RedundantIndex;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "Redundant index detection should work when defineTable is aliased to a variable"
+    );
+}

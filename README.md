@@ -130,7 +130,7 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 | Rule ID | Severity | What it detects |
 |---|---|---|
 | `security/missing-arg-validators` | error | Public functions without `args` validators |
-| `security/missing-return-validators` | warning | Functions without `returns` validators |
+| `security/missing-return-validators` | warning | Public functions without `returns` validators |
 | `security/missing-auth-check` | warning | Public functions that never call `ctx.auth.getUserIdentity()` |
 | `security/internal-api-misuse` | error | Server-to-server calls using `api.*` instead of `internal.*` |
 | `security/hardcoded-secrets` | error | API keys, tokens, or secrets hardcoded in source |
@@ -138,7 +138,7 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 | `security/spoofable-access-control` | warning | Access control trusting spoofable client args (e.g. `userId`, `role`) |
 | `security/missing-table-id` | warning | Using string IDs instead of `v.id("table")` for document references |
 | `security/missing-http-auth` | error | HTTP action endpoints without authentication checks |
-| `security/conditional-function-export` | warning | Convex functions conditionally exported based on environment |
+| `security/conditional-function-export` | error | Convex functions conditionally exported based on environment |
 | `security/generic-mutation-args` | warning | Public mutations using `v.any()` in argument validators |
 | `security/overly-broad-patch` | warning | `ctx.db.patch` with spread args that bypass validation |
 | `security/http-missing-cors` | warning | HTTP routes without CORS headers |
@@ -160,7 +160,7 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 | `perf/missing-index-on-foreign-key` | warning | `v.id("table")` field in schema without a corresponding index |
 | `perf/action-from-client` | warning | Client calling actions directly instead of mutations |
 | `perf/collect-then-filter` | warning | `.collect()` followed by JS `.filter()` instead of using DB query filters |
-| `perf/large-document-write` | warning | Inserting documents with 20+ fields in a single write |
+| `perf/large-document-write` | info | Inserting documents with 20+ fields in a single write |
 | `perf/no-pagination-for-list` | warning | Public query with `.collect()` returning unbounded results to client |
 
 </details>
@@ -179,14 +179,22 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 | `correctness/missing-unique` | warning | `.first()` on indexed query where `.unique()` may be appropriate |
 | `correctness/query-side-effect` | error | Side effects (`ctx.db.insert/patch/delete`) inside query functions |
 | `correctness/mutation-in-query` | error | `ctx.runMutation` called from within a query function |
-| `correctness/cron-uses-public-api` | warning | Cron jobs referencing public `api.*` instead of `internal.*` |
-| `correctness/node-query-mutation` | warning | Queries/mutations using `"use node"` runtime unnecessarily |
+| `correctness/cron-uses-public-api` | error | Cron jobs referencing public `api.*` instead of `internal.*` |
+| `correctness/node-query-mutation` | error | Queries/mutations defined in `"use node"` files |
 | `correctness/scheduler-return-ignored` | info | `ctx.scheduler.runAfter` return value not captured |
 | `correctness/non-deterministic-in-query` | warning | `Math.random()`, `new Date()`, `crypto` in query functions |
 | `correctness/replace-vs-patch` | info | `ctx.db.replace` used where `ctx.db.patch` may be safer |
-| `correctness/generated-code-modified` | warning | Generated files (`_generated/`) appear to be manually modified |
+| `correctness/generated-code-modified` | error | Generated files (`_generated/`) appear to be manually modified |
 
 </details>
+
+Additional parser diagnostic:
+
+| Rule ID | Severity | What it detects |
+|---|---|---|
+| `correctness/file-parse-error` | error | A file failed to parse, so normal rules could not run on it |
+
+This diagnostic is emitted by the engine when parsing fails and is not counted in the 65 registered rules.
 
 <details>
 <summary><strong>Schema</strong> (8 rules)</summary>
@@ -238,7 +246,7 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 
 | Rule ID | Severity | What it detects |
 |---|---|---|
-| `client/mutation-in-render` | error | `useMutation` called in React render body (infinite loop) |
+| `client/mutation-in-render` | error | Mutation invocation during render (e.g. `useMutation(...)(...)`) |
 | `client/unhandled-loading-state` | warning | `useQuery` result used without checking for `undefined` loading state |
 | `client/action-instead-of-mutation` | info | `useAction` used where `useMutation` may suffice |
 | `client/missing-convex-provider` | info | Convex hooks used without `ConvexProvider` in component tree |

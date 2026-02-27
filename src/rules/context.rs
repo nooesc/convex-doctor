@@ -92,6 +92,9 @@ struct ConvexVisitor<'a> {
     current_object_property_name: Option<String>,
     schema_table_id_stack: Vec<String>,
     pending_functions: HashMap<String, ConvexFunction>,
+    schema_table_aliases: HashMap<String, String>,
+    convex_hook_aliases: HashMap<String, String>,
+    identifier_aliases: HashMap<String, String>,
 }
 
 impl<'a> ConvexVisitor<'a> {
@@ -117,6 +120,13 @@ impl<'a> ConvexVisitor<'a> {
             current_object_property_name: None,
             schema_table_id_stack: vec![],
             pending_functions: HashMap::new(),
+            schema_table_aliases: HashMap::new(),
+            convex_hook_aliases: HashMap::from([
+                ("useMutation".to_string(), "useMutation".to_string()),
+                ("useQuery".to_string(), "useQuery".to_string()),
+                ("useAction".to_string(), "useAction".to_string()),
+            ]),
+            identifier_aliases: HashMap::new(),
         }
     }
 
@@ -202,15 +212,184 @@ impl<'a> ConvexVisitor<'a> {
         }
     }
 
-    /// Resolve a stable table identity for .index(...) calls.
-    fn get_index_table_id(callee: &Expression<'_>) -> Option<String> {
+    /// Resolve a stable table identity for .index(...) / .searchIndex(...) calls.
+    fn get_index_table_id(&self, callee: &Expression<'_>) -> Option<String> {
         let Expression::StaticMemberExpression(mem) = callee else {
             return None;
         };
-        if mem.property.name.as_str() != "index" {
+        if !matches!(mem.property.name.as_str(), "index" | "searchIndex") {
             return None;
         }
-        Self::find_define_table_call_start(&mem.object).map(|start| format!("table@{start}"))
+        self.resolve_table_id_from_expr(&mem.object)
+    }
+
+    fn resolve_table_id_from_expr(&self, expr: &Expression<'_>) -> Option<String> {
+        match expr {
+            Expression::Identifier(ident) => {
+                self.schema_table_aliases.get(ident.name.as_str()).cloned()
+            }
+            Expression::CallExpression(call) => match &call.callee {
+                Expression::Identifier(ident) if ident.name.as_str() == "defineTable" => {
+                    Some(format!("table@{}", call.span.start))
+                }
+                Expression::StaticMemberExpression(mem)
+                    if matches!(mem.property.name.as_str(), "index" | "searchIndex") =>
+                {
+                    self.resolve_table_id_from_expr(&mem.object)
+                }
+                _ => Self::find_define_table_call_start(expr).map(|start| format!("table@{start}")),
+            },
+            Expression::StaticMemberExpression(mem) => self.resolve_table_id_from_expr(&mem.object),
+            _ => Self::find_define_table_call_start(expr).map(|start| format!("table@{start}")),
+        }
+    }
+
+    fn parse_named_import_entries(raw_import: &str) -> Vec<(String, String)> {
+        let Some(open_idx) = raw_import.find('{') else {
+            return vec![];
+        };
+        let Some(close_idx) = raw_import.rfind('}') else {
+            return vec![];
+        };
+        if close_idx <= open_idx {
+            return vec![];
+        }
+
+        raw_import[open_idx + 1..close_idx]
+            .split(',')
+            .filter_map(|part| {
+                let trimmed = part.trim();
+                if trimmed.is_empty() {
+                    return None;
+                }
+                let tokens: Vec<&str> = trimmed.split_whitespace().collect();
+                if tokens.is_empty() {
+                    return None;
+                }
+                if tokens.len() == 1 {
+                    return Some((tokens[0].to_string(), tokens[0].to_string()));
+                }
+                if tokens.len() == 3 && tokens[1] == "as" {
+                    return Some((tokens[0].to_string(), tokens[2].to_string()));
+                }
+                None
+            })
+            .collect()
+    }
+
+    fn resolve_convex_hook_name(&self, callee: &Expression<'_>) -> Option<String> {
+        match callee {
+            Expression::Identifier(ident) => self
+                .convex_hook_aliases
+                .get(ident.name.as_str())
+                .cloned(),
+            _ => None,
+        }
+    }
+
+    fn is_immediately_invoked(source_text: &str, call_end: u32) -> bool {
+        let mut idx = call_end as usize;
+        let bytes = source_text.as_bytes();
+        while idx < bytes.len() {
+            let ch = bytes[idx] as char;
+            if !ch.is_whitespace() {
+                return ch == '(';
+            }
+            idx += 1;
+        }
+        false
+    }
+
+    fn collect_identifiers(expr: &Expression<'_>, out: &mut Vec<String>) {
+        match expr {
+            Expression::Identifier(ident) => out.push(ident.name.as_str().to_string()),
+            Expression::ArrayExpression(arr) => {
+                for el in &arr.elements {
+                    if let Some(inner) = el.as_expression() {
+                        Self::collect_identifiers(inner, out);
+                    }
+                }
+            }
+            Expression::CallExpression(call) => {
+                Self::collect_identifiers(&call.callee, out);
+                for arg in &call.arguments {
+                    if let Some(inner) = arg.as_expression() {
+                        Self::collect_identifiers(inner, out);
+                    }
+                }
+            }
+            Expression::StaticMemberExpression(mem) => {
+                Self::collect_identifiers(&mem.object, out);
+            }
+            Expression::ComputedMemberExpression(mem) => {
+                Self::collect_identifiers(&mem.object, out);
+                Self::collect_identifiers(&mem.expression, out);
+            }
+            Expression::ChainExpression(chain) => match &chain.expression {
+                ChainElement::CallExpression(call) => {
+                    Self::collect_identifiers(&call.callee, out);
+                    for arg in &call.arguments {
+                        if let Some(inner) = arg.as_expression() {
+                            Self::collect_identifiers(inner, out);
+                        }
+                    }
+                }
+                ChainElement::StaticMemberExpression(mem) => {
+                    Self::collect_identifiers(&mem.object, out);
+                }
+                ChainElement::ComputedMemberExpression(mem) => {
+                    Self::collect_identifiers(&mem.object, out);
+                    Self::collect_identifiers(&mem.expression, out);
+                }
+                _ => {}
+            },
+            Expression::ParenthesizedExpression(paren) => {
+                Self::collect_identifiers(&paren.expression, out);
+            }
+            Expression::UnaryExpression(unary) => {
+                Self::collect_identifiers(&unary.argument, out);
+            }
+            Expression::BinaryExpression(binary) => {
+                Self::collect_identifiers(&binary.left, out);
+                Self::collect_identifiers(&binary.right, out);
+            }
+            Expression::LogicalExpression(logical) => {
+                Self::collect_identifiers(&logical.left, out);
+                Self::collect_identifiers(&logical.right, out);
+            }
+            Expression::ConditionalExpression(cond) => {
+                Self::collect_identifiers(&cond.test, out);
+                Self::collect_identifiers(&cond.consequent, out);
+                Self::collect_identifiers(&cond.alternate, out);
+            }
+            _ => {}
+        }
+    }
+
+    fn record_awaited_identifier(&mut self, identifier: String) {
+        if !self.analysis.awaited_identifiers.contains(&identifier) {
+            self.analysis.awaited_identifiers.push(identifier);
+        }
+    }
+
+    fn resolve_identifier_alias_root(&self, identifier: &str) -> Option<String> {
+        let mut current = identifier;
+        let mut hops = 0;
+        while let Some(next) = self.identifier_aliases.get(current) {
+            if next == current {
+                break;
+            }
+            current = next;
+            hops += 1;
+            if hops > 32 {
+                break;
+            }
+        }
+        if current == identifier {
+            None
+        } else {
+            Some(current.to_string())
+        }
     }
 
     /// Check if an expression chain contains "ctx.auth" at any point.
@@ -526,6 +705,10 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
     fn visit_import_declaration(&mut self, it: &ImportDeclaration<'a>) {
         let source = it.source.value.as_str().to_string();
         let mut specifiers = Vec::new();
+        let source_str = it.source.value.as_str();
+        let start = (it.span.start as usize).min(self.source_text.len());
+        let end = (it.span.end as usize).min(self.source_text.len());
+        let import_stmt = &self.source_text[start..end];
 
         if let Some(specs) = &it.specifiers {
             for spec in specs {
@@ -545,14 +728,18 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
 
         let (line, _) = self.line_col(it.span.start);
 
-        // 15b. Detect ConvexProvider import from convex/react
-        let source_str = it.source.value.as_str();
-        if source_str.contains("convex/react")
-            && specifiers
-                .iter()
-                .any(|s| s == "ConvexProvider" || s == "ConvexReactClient")
-        {
-            self.analysis.has_convex_provider = true;
+        if source_str.contains("convex/react") {
+            for (imported, local) in Self::parse_named_import_entries(import_stmt) {
+                match imported.as_str() {
+                    "useMutation" | "useQuery" | "useAction" => {
+                        self.convex_hook_aliases.insert(local, imported);
+                    }
+                    "ConvexProvider" | "ConvexReactClient" => {
+                        self.analysis.has_convex_provider = true;
+                    }
+                    _ => {}
+                }
+            }
         }
 
         self.analysis.imports.push(ImportInfo {
@@ -790,7 +977,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     self.analysis.collect_calls.push(CallLocation {
                         line,
                         col,
-                        detail: "collect()".to_string(),
+                        detail: full_chain,
                     });
                     // Track variables assigned from ctx.db.*.collect() for collect-then-filter detection
                     if let Some(ref target) = self.current_assignment_target {
@@ -873,8 +1060,17 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         if Self::is_ctx_call(&it.callee) {
             if let Some(chain) = Self::resolve_member_chain(&it.callee) {
                 // Track ctx call
-                // Extract first_arg_chain from the first argument
-                let first_arg_chain = it.arguments.first().and_then(|arg| {
+                // Extract first_arg_chain from the first argument by default.
+                // For scheduler.runAfter/runAt, the callable is the second arg.
+                let target_arg_index =
+                    if chain.starts_with("ctx.scheduler.runAfter")
+                        || chain.starts_with("ctx.scheduler.runAt")
+                    {
+                        1
+                    } else {
+                        0
+                    };
+                let first_arg_chain = it.arguments.get(target_arg_index).and_then(|arg| {
                     arg.as_expression()
                         .and_then(|expr| Self::resolve_member_chain(expr))
                 });
@@ -972,7 +1168,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         // Detect .index("name", ["field1", "field2"]) calls for schema redundant-index rule
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             if mem.property.name.as_str() == "index" && it.arguments.len() >= 2 {
-                let table = Self::get_index_table_id(&it.callee).unwrap_or_default();
+                let table = self.get_index_table_id(&it.callee).unwrap_or_default();
                 let index_name = it.arguments.first().and_then(|arg| {
                     arg.as_expression().and_then(|e| {
                         if let Expression::StringLiteral(s) = e {
@@ -1231,7 +1427,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         // 11. Detect .searchIndex("name", { searchField, filterFields }) calls
         if let Expression::StaticMemberExpression(mem) = &it.callee {
             if mem.property.name.as_str() == "searchIndex" && it.arguments.len() >= 2 {
-                let table = Self::get_index_table_id(&it.callee).unwrap_or_default();
+                let table = self.get_index_table_id(&it.callee).unwrap_or_default();
                 let index_name = it.arguments.first().and_then(|arg| {
                     arg.as_expression().and_then(|e| {
                         if let Expression::StringLiteral(s) = e {
@@ -1306,19 +1502,15 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
         }
 
         // 15. Detect Convex hook calls: useMutation, useQuery, useAction
-        if let Expression::Identifier(ident) = &it.callee {
-            let name = ident.name.as_str();
-            if matches!(name, "useMutation" | "useQuery" | "useAction") {
-                self.analysis.convex_hook_calls.push(ConvexHookCall {
-                    hook_name: name.to_string(),
-                    line,
-                    col,
-                    // Heuristic disabled: statically distinguishing render body
-                    // from event handlers / useEffect is unreliable.  The rule
-                    // infrastructure is kept for future improvement.
-                    in_render_body: false,
-                });
-            }
+        if let Some(hook_name) = self.resolve_convex_hook_name(&it.callee) {
+            let in_render_body = hook_name == "useMutation"
+                && Self::is_immediately_invoked(self.source_text, it.span.end);
+            self.analysis.convex_hook_calls.push(ConvexHookCall {
+                hook_name,
+                line,
+                col,
+                in_render_body,
+            });
         }
 
         walk::walk_call_expression(self, it);
@@ -1373,10 +1565,12 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
     }
 
     fn visit_await_expression(&mut self, it: &AwaitExpression<'a>) {
-        if let Expression::Identifier(ident) = &it.argument {
-            let awaited = ident.name.as_str().to_string();
-            if !self.analysis.awaited_identifiers.contains(&awaited) {
-                self.analysis.awaited_identifiers.push(awaited);
+        let mut identifiers = Vec::new();
+        Self::collect_identifiers(&it.argument, &mut identifiers);
+        for identifier in identifiers {
+            self.record_awaited_identifier(identifier.clone());
+            if let Some(root) = self.resolve_identifier_alias_root(&identifier) {
+                self.record_awaited_identifier(root);
             }
         }
 
@@ -1389,7 +1583,26 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
     fn visit_variable_declarator(&mut self, it: &VariableDeclarator<'a>) {
         let prev_assignment = self.current_assignment_target.clone();
         if let BindingPattern::BindingIdentifier(ident) = &it.id {
-            self.current_assignment_target = Some(ident.name.as_str().to_string());
+            let name = ident.name.as_str().to_string();
+            self.current_assignment_target = Some(name.clone());
+
+            if let Some(init) = &it.init {
+                if let Some(start) = Self::find_define_table_call_start(init) {
+                    self.schema_table_aliases
+                        .insert(name.clone(), format!("table@{start}"));
+                }
+
+                if let Expression::Identifier(source_ident) = init {
+                    self.identifier_aliases.insert(
+                        name.clone(),
+                        source_ident.name.as_str().to_string(),
+                    );
+                } else {
+                    self.identifier_aliases.remove(&name);
+                }
+            } else {
+                self.identifier_aliases.remove(&name);
+            }
         }
         walk::walk_variable_declarator(self, it);
         self.current_assignment_target = prev_assignment;

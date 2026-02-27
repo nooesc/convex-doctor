@@ -374,6 +374,26 @@ fn no_helper_functions_does_not_flag_simple_crud_files() {
     assert!(diagnostics.is_empty());
 }
 
+#[test]
+fn no_helper_functions_flags_crud_prefixed_helper_like_names() {
+    let analysis = FileAnalysis {
+        file_path: "convex/mixed_crud_like.ts".to_string(),
+        functions: vec![
+            make_large_function("getCachedUser", FunctionKind::Query, 20),
+            make_large_function("listHelpers", FunctionKind::Query, 25),
+            make_large_function("createUser", FunctionKind::Mutation, 30),
+        ],
+        unexported_function_count: 0,
+        ..Default::default()
+    };
+    let rule = NoHelperFunctions;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        !diagnostics.is_empty(),
+        "CRUD-prefixed helper-like names should not suppress this rule"
+    );
+}
+
 // ── DeepFunctionChain ────────────────────────────────────────────────
 
 fn make_action_ctx_call(chain: &str, line: u32) -> CtxCall {

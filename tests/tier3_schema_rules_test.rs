@@ -24,6 +24,12 @@ fn test_too_many_indexes_triggered() {
     );
     assert_eq!(diagnostics[0].severity, Severity::Info);
     assert!(diagnostics[0].message.contains("indexes"));
+    assert!(
+        diagnostics[0]
+            .message
+            .contains("soft warning threshold is 8"),
+        "Message should clarify 8 is a soft threshold"
+    );
 }
 
 #[test]
@@ -149,7 +155,29 @@ export default defineSchema({
 
 #[test]
 fn test_optional_fields_warning_triggered() {
-    let analysis = analyze_file(Path::new("tests/fixtures/schema_many_optional.ts")).unwrap();
+    let dir = TempDir::new().unwrap();
+    let schema_path = dir.path().join("schema.ts");
+    std::fs::write(
+        &schema_path,
+        r#"
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  users: defineTable({
+    a: v.optional(v.string()),
+    b: v.optional(v.string()),
+    c: v.optional(v.string()),
+    d: v.optional(v.string()),
+    e: v.optional(v.string()),
+    f: v.optional(v.string()),
+  }),
+});
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&schema_path).unwrap();
     let rule = OptionalFieldNoDefaultHandling;
     let diagnostics = rule.check(&analysis);
     assert_eq!(
@@ -202,6 +230,36 @@ fn test_optional_fields_not_triggered_for_non_schema_file() {
     let rule = OptionalFieldNoDefaultHandling;
     let diagnostics = rule.check(&analysis);
     assert!(diagnostics.is_empty(), "Should not flag non-schema files");
+}
+
+#[test]
+fn test_optional_fields_not_triggered_for_schema_named_utility_file() {
+    let dir = TempDir::new().unwrap();
+    let path = dir.path().join("schema-utils.ts");
+    std::fs::write(
+        &path,
+        r#"
+import { v } from "convex/values";
+
+export const fields = {
+  a: v.optional(v.string()),
+  b: v.optional(v.string()),
+  c: v.optional(v.string()),
+  d: v.optional(v.string()),
+  e: v.optional(v.string()),
+  f: v.optional(v.string()),
+};
+"#,
+    )
+    .unwrap();
+
+    let analysis = analyze_file(&path).unwrap();
+    let rule = OptionalFieldNoDefaultHandling;
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "Only canonical schema files should trigger optional-field-no-default-handling"
+    );
 }
 
 // ── MissingIndexForQuery (project-level) ────────────────────────────────────

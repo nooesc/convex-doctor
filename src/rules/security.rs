@@ -1,7 +1,15 @@
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, FunctionKind, ProjectContext, Rule};
+
+fn path_has_segment(path: &str, segment: &str) -> bool {
+    let normalized = path.replace('\\', "/");
+    Path::new(&normalized)
+        .components()
+        .any(|component| component.as_os_str().to_string_lossy() == segment)
+}
 
 pub struct MissingArgValidators;
 impl Rule for MissingArgValidators {
@@ -50,7 +58,7 @@ impl Rule for MissingReturnValidators {
         analysis
             .functions
             .iter()
-            .filter(|f| !f.has_return_validator)
+            .filter(|f| f.is_public() && !f.has_return_validator)
             .map(|f| Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
@@ -80,10 +88,8 @@ impl Rule for MissingAuthCheck {
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
         // Skip conventional admin/migration directories — public functions in
         // _scripts/ or _internal/ are typically only called from admin tooling.
-        if analysis.file_path.contains("/_scripts/")
-            || analysis.file_path.contains("/_internal/")
-            || analysis.file_path.contains("\\_scripts\\")
-            || analysis.file_path.contains("\\_internal\\")
+        if path_has_segment(&analysis.file_path, "_scripts")
+            || path_has_segment(&analysis.file_path, "_internal")
         {
             return vec![];
         }

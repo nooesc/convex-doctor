@@ -25,9 +25,8 @@ fn analyze_ts(content: &str) -> convex_doctor::rules::FileAnalysis {
 // =========================================================================
 
 #[test]
-fn mutation_in_render_not_flagged_with_disabled_heuristic() {
-    // in_render_body heuristic is disabled (too unreliable for static analysis),
-    // so MutationInRender should not fire.
+fn mutation_in_render_not_flagged_for_normal_hook_usage() {
+    // Normal hook usage should not fire.
     let analysis = analyze_tsx(
         r#"
 import { useMutation } from "convex/react";
@@ -42,7 +41,7 @@ export default function BadComponent() {
     let diags = MutationInRender.check(&analysis);
     assert!(
         diags.is_empty(),
-        "in_render_body heuristic is disabled; rule should not fire, got: {:?}",
+        "Normal hook usage should not fire, got: {:?}",
         diags
     );
 }
@@ -85,6 +84,26 @@ export default function ReadOnly() {
     );
     let diags = MutationInRender.check(&analysis);
     assert!(diags.is_empty(), "No useMutation means no diagnostic");
+}
+
+#[test]
+fn mutation_in_render_detected_for_immediately_invoked_hook() {
+    let analysis = analyze_tsx(
+        r#"
+import { useMutation } from "convex/react";
+import { api } from "../convex/_generated/api";
+
+export default function BadComponent() {
+  useMutation(api.tasks.create)({ name: "x" });
+  return <div />;
+}
+"#,
+    );
+    let diags = MutationInRender.check(&analysis);
+    assert!(
+        !diags.is_empty(),
+        "Immediate invocation of useMutation result should be flagged"
+    );
 }
 
 // =========================================================================
@@ -133,6 +152,26 @@ export default function Multi() {
         1,
         "Should emit exactly one diagnostic per file, got {}",
         diags.len()
+    );
+}
+
+#[test]
+fn unhandled_loading_state_detected_for_aliased_use_query() {
+    let analysis = analyze_tsx(
+        r#"
+import { useQuery as useConvexQuery } from "convex/react";
+import { api } from "../convex/_generated/api";
+
+export default function AliasQuery() {
+  const data = useConvexQuery(api.tasks.list);
+  return <div>{data?.length}</div>;
+}
+"#,
+    );
+    let diags = UnhandledLoadingState.check(&analysis);
+    assert!(
+        !diags.is_empty(),
+        "Aliased useQuery import should still be detected"
     );
 }
 
@@ -203,6 +242,26 @@ export default function MultiAction() {
 }
 
 #[test]
+fn action_instead_of_mutation_detected_for_aliased_use_action() {
+    let analysis = analyze_tsx(
+        r#"
+import { useAction as useConvexAction } from "convex/react";
+import { api } from "../convex/_generated/api";
+
+export default function ActionAlias() {
+  const run = useConvexAction(api.tasks.doThing);
+  return <button onClick={() => run()} />;
+}
+"#,
+    );
+    let diags = ActionInsteadOfMutation.check(&analysis);
+    assert!(
+        !diags.is_empty(),
+        "Aliased useAction import should still be detected"
+    );
+}
+
+#[test]
 fn no_action_no_diagnostic() {
     let analysis = analyze_tsx(
         r#"
@@ -266,6 +325,26 @@ function App() {
 }
 
 #[test]
+fn no_warning_when_provider_is_aliased() {
+    let analysis = analyze_ts(
+        r#"
+import { ConvexProvider as Provider } from "convex/react";
+import { useQuery } from "convex/react";
+
+function App() {
+  const data = useQuery(api.tasks.list);
+  return null;
+}
+"#,
+    );
+    let diags = MissingConvexProvider.check(&analysis);
+    assert!(
+        diags.is_empty(),
+        "Aliased ConvexProvider import should count as provider presence"
+    );
+}
+
+#[test]
 fn no_warning_when_no_hooks() {
     let analysis = analyze_tsx(
         r#"
@@ -311,9 +390,7 @@ export default function Multi() {
 
 #[test]
 fn mutation_in_render_severity_is_error_when_triggered() {
-    // in_render_body heuristic is disabled, so this test just verifies the
-    // rule struct has the right severity constant wired up.
-    // We check severity via a synthetic FileAnalysis with in_render_body = true.
+    // Verify the rule severity via a synthetic FileAnalysis with in_render_body = true.
     let mut analysis = convex_doctor::rules::FileAnalysis {
         file_path: "test.tsx".to_string(),
         ..Default::default()

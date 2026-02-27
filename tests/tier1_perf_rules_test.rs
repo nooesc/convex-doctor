@@ -2,8 +2,8 @@ use convex_doctor::diagnostic::Severity;
 use convex_doctor::rules::context::analyze_file;
 use convex_doctor::rules::performance::*;
 use convex_doctor::rules::{
-    CallLocation, ConvexFunction, FileAnalysis, FunctionKind, IndexDef, ProjectContext, Rule,
-    SchemaIdField,
+    CallLocation, ConvexFunction, CtxCall, FileAnalysis, FunctionKind, IndexDef, ProjectContext,
+    Rule, SchemaIdField,
 };
 use std::path::Path;
 
@@ -362,10 +362,17 @@ fn test_no_pagination_for_list_no_public_query() {
             span_line: 1,
             span_col: 1,
         }],
-        collect_calls: vec![CallLocation {
+        ctx_calls: vec![CtxCall {
+            chain: "ctx.db.query.collect".to_string(),
             line: 5,
             col: 10,
-            detail: ".collect()".to_string(),
+            is_awaited: true,
+            is_returned: false,
+            assigned_to: None,
+            enclosing_function_kind: Some(FunctionKind::InternalQuery),
+            enclosing_function_name: Some("getItems".to_string()),
+            enclosing_function_has_internal_secret: false,
+            first_arg_chain: None,
         }],
         ..Default::default()
     };
@@ -438,16 +445,30 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
                 span_col: 1,
             },
         ],
-        collect_calls: vec![
-            CallLocation {
+        ctx_calls: vec![
+            CtxCall {
+                chain: "ctx.db.query.collect".to_string(),
                 line: 5,
                 col: 10,
-                detail: ".collect()".to_string(),
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Query),
+                enclosing_function_name: Some("getItems".to_string()),
+                enclosing_function_has_internal_secret: false,
+                first_arg_chain: None,
             },
-            CallLocation {
+            CtxCall {
+                chain: "ctx.db.query.collect".to_string(),
                 line: 15,
                 col: 10,
-                detail: ".collect()".to_string(),
+                is_awaited: true,
+                is_returned: false,
+                assigned_to: None,
+                enclosing_function_kind: Some(FunctionKind::Query),
+                enclosing_function_name: Some("getOtherItems".to_string()),
+                enclosing_function_has_internal_secret: false,
+                first_arg_chain: None,
             },
         ],
         ..Default::default()
@@ -457,6 +478,62 @@ fn test_no_pagination_emits_one_diagnostic_per_file() {
         diagnostics.len(),
         1,
         "Should emit exactly one diagnostic per file"
+    );
+}
+
+#[test]
+fn test_no_pagination_does_not_cross_trigger_from_mutation_collect() {
+    let rule = NoPaginationForList;
+    let analysis = FileAnalysis {
+        functions: vec![
+            ConvexFunction {
+                name: "listItems".to_string(),
+                kind: FunctionKind::Query,
+                has_args_validator: true,
+                has_any_validator_in_args: false,
+                arg_names: vec![],
+                has_return_validator: false,
+                has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
+                handler_line_count: 5,
+                span_line: 1,
+                span_col: 1,
+            },
+            ConvexFunction {
+                name: "mutateItems".to_string(),
+                kind: FunctionKind::Mutation,
+                has_args_validator: true,
+                has_any_validator_in_args: false,
+                arg_names: vec![],
+                has_return_validator: false,
+                has_auth_check: false,
+                has_internal_secret: false,
+                is_intentionally_public: false,
+                handler_line_count: 5,
+                span_line: 10,
+                span_col: 1,
+            },
+        ],
+        ctx_calls: vec![CtxCall {
+            chain: "ctx.db.query.collect".to_string(),
+            line: 12,
+            col: 8,
+            is_awaited: true,
+            is_returned: false,
+            assigned_to: None,
+            enclosing_function_kind: Some(FunctionKind::Mutation),
+            enclosing_function_name: Some("mutateItems".to_string()),
+            enclosing_function_has_internal_secret: false,
+            first_arg_chain: None,
+        }],
+        ..Default::default()
+    };
+
+    let diagnostics = rule.check(&analysis);
+    assert!(
+        diagnostics.is_empty(),
+        "collect() inside a mutation should not trigger no-pagination-for-list"
     );
 }
 

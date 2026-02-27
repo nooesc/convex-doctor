@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, ProjectContext, Rule};
@@ -180,7 +181,7 @@ impl Rule for TooManyIndexes {
                     severity: Severity::Info,
                     category: self.category(),
                     message: format!(
-                        "Table '{}' has {} indexes (limit is 32)",
+                        "Table '{}' has {} indexes (soft warning threshold is 8, hard limit is 32)",
                         table,
                         indexes.len()
                     ),
@@ -234,7 +235,17 @@ impl Rule for OptionalFieldNoDefaultHandling {
         Category::Schema
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        if analysis.file_path.contains("schema") && analysis.optional_schema_fields.len() >= 5 {
+        let is_schema_file = Path::new(&analysis.file_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                matches!(
+                    name,
+                    "schema.ts" | "schema.js" | "schema.mts" | "schema.mjs"
+                )
+            });
+
+        if is_schema_file && analysis.optional_schema_fields.len() >= 5 {
             vec![Diagnostic {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
