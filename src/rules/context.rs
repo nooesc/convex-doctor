@@ -1143,7 +1143,11 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                             }
                         }
                         if let (Some(m), Some(p)) = (method, path) {
-                            let path_contains_webhook = p.to_ascii_lowercase().contains("webhook");
+                            let path_contains_webhook = p
+                                .to_ascii_lowercase()
+                                .split('/')
+                                .filter(|segment| !segment.is_empty())
+                                .any(|segment| segment == "webhook");
                             let mut comment_marks_webhook = false;
                             if line > 0 {
                                 let route_line_index = usize::try_from(line.saturating_sub(1)).ok();
