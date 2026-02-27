@@ -12,26 +12,26 @@ Tested against 18 open-source Convex applications
 
 | Project | Stars | Score | Errors | Warnings | Info | Total |
 |---------|------:|------:|-------:|---------:|-----:|------:|
-| [google-docs](https://github.com/Davronov-Alimardon/google-docs) | 73 | 94/100 | 0 | 15 | 2 | 17 |
-| [Ai-Website-Builder](https://github.com/Ratna-Babu/Ai-Website-Builder) | 122 | 92/100 | 0 | 15 | 1 | 16 |
+| [google-docs](https://github.com/Davronov-Alimardon/google-docs) | 73 | 95/100 | 0 | 13 | 1 | 14 |
+| [Ai-Website-Builder](https://github.com/Ratna-Babu/Ai-Website-Builder) | 124 | 93/100 | 0 | 12 | 1 | 13 |
 | [miro-clone](https://github.com/sanidhyy/miro-clone) | 82 | 89/100 | 3 | 18 | 13 | 34 |
-| [replicate](https://github.com/trestleinc/replicate) | 197 | 88/100 | 3 | 15 | 0 | 18 |
-| [livecanvas](https://github.com/kaifcoder/livecanvas) | 192 | 84/100 | 3 | 31 | 0 | 34 |
-| [quizzex](https://github.com/AnsellMaximilian/quizzex) | 1 | 83/100 | 3 | 65 | 4 | 72 |
-| [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 77/100 | 12 | 63 | 6 | 81 |
-| [convex-saas](https://github.com/get-convex/convex-saas) | 338 | 76/100 | 5 | 51 | 26 | 82 |
-| [convjobs](https://github.com/mithileshchellappan/convjobs) | 2 | 76/100 | 6 | 58 | 4 | 68 |
-| [BloxAI](https://github.com/subhadeeproy3902/BloxAI) | 91 | 76/100 | 9 | 81 | 0 | 90 |
-| [notion-clone](https://github.com/adityaphasu/notion-clone) | 141 | 76/100 | 10 | 38 | 28 | 76 |
-| [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 615 | 69/100 | 12 | 39 | 4 | 55 |
-| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 210 | 64/100 | 22 | 131 | 20 | 173 |
-| [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 56/100 | 49 | 188 | 15 | 252 |
-| [travel-planner-ai](https://github.com/hardikverma22/travel-planner-ai) | 241 | 55/100 | 28 | 173 | 9 | 210 |
-| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 315 | 55/100 | 50 | 192 | 120 | 362 |
-| [opensync](https://github.com/waynesutton/opensync) | 301 | 48/100 | 70 | 277 | 58 | 405 |
-| [markdown-site](https://github.com/waynesutton/markdown-site) | 547 | 36/100 | 77 | 316 | 48 | 441 |
+| [replicate](https://github.com/trestleinc/replicate) | 201 | 88/100 | 3 | 19 | 0 | 22 |
+| [livecanvas](https://github.com/kaifcoder/livecanvas) | 192 | 86/100 | 3 | 28 | 0 | 31 |
+| [quizzex](https://github.com/AnsellMaximilian/quizzex) | 1 | 82/100 | 3 | 61 | 4 | 68 |
+| [notion-clone](https://github.com/adityaphasu/notion-clone) | 141 | 80/100 | 9 | 32 | 28 | 69 |
+| [BloxAI](https://github.com/subhadeeproy3902/BloxAI) | 91 | 77/100 | 9 | 66 | 0 | 75 |
+| [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 77/100 | 12 | 51 | 6 | 69 |
+| [convjobs](https://github.com/mithileshchellappan/convjobs) | 2 | 76/100 | 6 | 47 | 4 | 57 |
+| [convex-saas](https://github.com/get-convex/convex-saas) | 339 | 70/100 | 7 | 39 | 26 | 72 |
+| [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 616 | 69/100 | 10 | 42 | 4 | 56 |
+| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 212 | 64/100 | 22 | 129 | 20 | 171 |
+| [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 57/100 | 47 | 142 | 15 | 204 |
+| [travel-planner-ai](https://github.com/hardikverma22/travel-planner-ai) | 241 | 55/100 | 34 | 165 | 9 | 208 |
+| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 314 | 54/100 | 49 | 172 | 118 | 339 |
+| [opensync](https://github.com/waynesutton/opensync) | 310 | 47/100 | 70 | 256 | 58 | 384 |
+| [markdown-site](https://github.com/waynesutton/markdown-site) | 550 | 41/100 | 73 | 245 | 48 | 366 |
 
-*Benchmarks run on Feb 24, 2026 against each project's `main` branch. Sorted by score.*
+*Benchmarks run on Feb 27, 2026 against each project's `main` branch. Sorted by score.*
 
 ## Installation
 
