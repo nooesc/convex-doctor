@@ -4,7 +4,7 @@
 
 Diagnose your Convex backend for anti-patterns, security issues, and performance problems.
 
-`convex-doctor` is a static analysis CLI for [Convex](https://convex.dev) projects. It parses your `convex/` directory, runs **65 rules across 7 categories**, and produces a weighted 0-100 health score. Think of it as ESLint, but purpose-built for Convex backends.
+`convex-doctor` is a static analysis CLI for [Convex](https://convex.dev) projects. It parses your `convex/` directory, runs **72 rules across 7 categories**, and produces a weighted 0-100 health score. Think of it as ESLint, but purpose-built for Convex backends.
 
 ## Benchmarks
 
@@ -110,14 +110,14 @@ convex-doctor /path/to/my-project
 
 ## Rules
 
-convex-doctor runs **65 rules** organized into **7 categories**. Each category carries a different weight in the final score.
+convex-doctor runs **72 rules** organized into **7 categories**. Each category carries a different weight in the final score.
 
 | Category | Weight | Rules | Description |
 |---|---|---|---|
 | **Security** | 1.5x | 13 | Arg/return validators, auth checks, internal API misuse, secrets, CORS, access control, generic args |
-| **Performance** | 1.2x | 12 | Unbounded collect, missing indexes, Date.now() in queries, loop mutations, N+1 patterns, pagination |
-| **Correctness** | 1.5x | 15 | Unwaited promises, deprecated APIs, side effects in queries, scheduler issues, non-determinism |
-| **Schema** | 1.0x | 8 | Missing schema, deep nesting, redundant indexes, search index filters, optional field handling |
+| **Performance** | 1.2x | 13 | Unbounded collect, missing indexes, Date.now() in queries, loop mutations, N+1 patterns, pagination |
+| **Correctness** | 1.5x | 20 | Unwaited promises, deprecated APIs, side effects in queries, scheduling/runtime/storage correctness |
+| **Schema** | 1.0x | 9 | Missing schema, deep nesting, redundant indexes, search/index naming, optional field handling |
 | **Architecture** | 0.8x | 8 | Large handlers, monolithic files, function chains, mixed types, missing helpers |
 | **Configuration** | 1.0x | 5 | Missing convex.json, auth config, generated code, tsconfig, node version |
 | **Client-Side** | 1.0x | 4 | Mutation in render, unhandled loading states, missing ConvexProvider |
@@ -129,7 +129,7 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 
 | Rule ID | Severity | What it detects |
 |---|---|---|
-| `security/missing-arg-validators` | error | Public functions without `args` validators |
+| `security/missing-arg-validators` | error | Query/mutation/action and internal variants without `args` validators |
 | `security/missing-return-validators` | warning | Public functions without `returns` validators |
 | `security/missing-auth-check` | warning | Public functions that never call `ctx.auth.getUserIdentity()` |
 | `security/internal-api-misuse` | error | Server-to-server calls using `api.*` instead of `internal.*` |
@@ -146,7 +146,7 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 </details>
 
 <details>
-<summary><strong>Performance</strong> (12 rules)</summary>
+<summary><strong>Performance</strong> (13 rules)</summary>
 
 | Rule ID | Severity | What it detects |
 |---|---|---|
@@ -162,18 +162,19 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 | `perf/collect-then-filter` | warning | `.collect()` followed by JS `.filter()` instead of using DB query filters |
 | `perf/large-document-write` | info | Inserting documents with 20+ fields in a single write |
 | `perf/no-pagination-for-list` | warning | Public query with `.collect()` returning unbounded results to client |
+| `perf/missing-pagination-opts-validator` | warning | `.paginate(...)` used without `paginationOptsValidator` in function args |
 
 </details>
 
 <details>
-<summary><strong>Correctness</strong> (15 rules)</summary>
+<summary><strong>Correctness</strong> (20 rules)</summary>
 
 | Rule ID | Severity | What it detects |
 |---|---|---|
 | `correctness/unwaited-promise` | error | `ctx.db.insert`, `ctx.runMutation`, etc. without `await` |
 | `correctness/old-function-syntax` | warning | Legacy function registration syntax |
 | `correctness/db-in-action` | error | Direct `ctx.db.*` calls inside actions |
-| `correctness/deprecated-api` | warning | Usage of deprecated Convex APIs (`v.bigint()`, `v.bytes()`) |
+| `correctness/deprecated-api` | warning | Usage of deprecated Convex APIs (`v.bigint()`) |
 | `correctness/wrong-runtime-import` | warning | Incompatible runtime imports (Node in edge, browser in server) |
 | `correctness/direct-function-ref` | warning | Direct function refs passed to `ctx.run*` instead of `api.*`/`internal.*` |
 | `correctness/missing-unique` | warning | `.first()` on indexed query where `.unique()` may be appropriate |
@@ -183,8 +184,13 @@ convex-doctor runs **65 rules** organized into **7 categories**. Each category c
 | `correctness/node-query-mutation` | error | Queries/mutations defined in `"use node"` files |
 | `correctness/scheduler-return-ignored` | info | `ctx.scheduler.runAfter` return value not captured |
 | `correctness/non-deterministic-in-query` | warning | `Math.random()`, `new Date()`, `crypto` in query functions |
-| `correctness/replace-vs-patch` | info | `ctx.db.replace` used where `ctx.db.patch` may be safer |
+| `correctness/replace-vs-patch` | info | `ctx.db.replace` semantics reminder (full document replacement) |
 | `correctness/generated-code-modified` | error | Generated files (`_generated/`) appear to be manually modified |
+| `correctness/unsupported-validator-type` | error | Unsupported validator usage (`v.map()`, `v.set()`) |
+| `correctness/query-delete-unsupported` | error | Unsupported query-chain `.delete()` usage |
+| `correctness/cron-helper-method-usage` | warning | Use of deprecated cron helper methods (`hourly`/`daily`/`weekly`) |
+| `correctness/cron-direct-function-reference` | error | Cron methods passed direct function identifiers instead of generated references |
+| `correctness/storage-get-metadata-deprecated` | warning | Deprecated `ctx.storage.getMetadata` usage |
 
 </details>
 
@@ -194,10 +200,10 @@ Additional parser diagnostic:
 |---|---|---|
 | `correctness/file-parse-error` | error | A file failed to parse, so normal rules could not run on it |
 
-This diagnostic is emitted by the engine when parsing fails and is not counted in the 65 registered rules.
+This diagnostic is emitted by the engine when parsing fails and is not counted in the 72 registered rules.
 
 <details>
-<summary><strong>Schema</strong> (8 rules)</summary>
+<summary><strong>Schema</strong> (9 rules)</summary>
 
 | Rule ID | Severity | What it detects |
 |---|---|---|
@@ -209,6 +215,7 @@ This diagnostic is emitted by the engine when parsing fails and is not counted i
 | `schema/missing-search-index-filter` | info | Search index without `filterFields` |
 | `schema/optional-field-no-default-handling` | warning | 5+ optional schema fields without undefined handling |
 | `schema/missing-index-for-query` | warning | Query filters on a field with no matching index |
+| `schema/index-name-includes-fields` | warning | Index name does not include all indexed fields in order (`by_field1_and_field2`) |
 
 </details>
 
@@ -284,7 +291,16 @@ files = [
 # CI: exit with code 1 if score is below threshold
 [ci]
 fail_below = 70
+
+# Convex guidance behavior
+[convex]
+guidance_version = "v0.241.0"
+strictness = "tiered" # tiered | strict | low_noise
 ```
+
+Use `scripts/update-convex-guidance.sh [version]` to refresh pinned Convex guidance files in `reference/convex/`.
+Examples: `scripts/update-convex-guidance.sh` or `scripts/update-convex-guidance.sh v0.242.0`.
+The updater re-generates `reference/convex/coverage_matrix.toml` from the new guidance and carries forward prior enforceable mappings when bullet text still matches. The matrix is validated by `tests/convex_guidance_matrix_test.rs`.
 
 ## CI integration
 
