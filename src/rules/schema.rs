@@ -32,8 +32,9 @@ impl Rule for MissingSchema {
                 severity: Severity::Warning,
                 category: self.category(),
                 message: "No schema file found in convex/ directory".to_string(),
-                help: "Create a convex/schema* file to define your database schema with type safety."
-                    .to_string(),
+                help:
+                    "Create a convex/schema* file to define your database schema with type safety."
+                        .to_string(),
                 file: "convex/".to_string(),
                 line: 0,
                 column: 0,
@@ -247,9 +248,7 @@ impl Rule for OptionalFieldNoDefaultHandling {
         let is_schema_file = Path::new(&analysis.file_path)
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| {
-                SCHEMA_FILENAMES.contains(&name)
-            });
+            .is_some_and(|name| SCHEMA_FILENAMES.contains(&name));
 
         if is_schema_file && analysis.optional_schema_fields.len() >= 5 {
             vec![Diagnostic {

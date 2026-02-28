@@ -315,7 +315,8 @@ impl Rule for DeepFunctionChain {
             if is_action
                 && !call.enclosing_function_has_internal_secret
                 && !is_chunked_action
-                && (call.chain.starts_with("ctx.runQuery") || call.chain.starts_with("ctx.runMutation"))
+                && (call.chain.starts_with("ctx.runQuery")
+                    || call.chain.starts_with("ctx.runMutation"))
             {
                 let key = call
                     .enclosing_function_id

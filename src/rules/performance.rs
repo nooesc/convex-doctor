@@ -124,7 +124,9 @@ impl Rule for SequentialRunCalls {
         let mut by_function: HashMap<String, Vec<&crate::rules::CtxCall>> = HashMap::new();
         for call in analysis.ctx_calls.iter().filter(|c| {
             (c.chain.starts_with("ctx.runQuery") || c.chain.starts_with("ctx.runMutation"))
-                && c.enclosing_function_kind.as_ref().is_some_and(|k| k.is_action())
+                && c.enclosing_function_kind
+                    .as_ref()
+                    .is_some_and(|k| k.is_action())
         }) {
             let key = call
                 .enclosing_function_id

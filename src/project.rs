@@ -20,10 +20,9 @@ impl ProjectInfo {
             return Err(format!("No convex/ directory found in {}", root.display()));
         }
 
-        let has_schema =
-            SCHEMA_FILENAMES
-                .iter()
-                .any(|file| convex_dir.join(file).exists());
+        let has_schema = SCHEMA_FILENAMES
+            .iter()
+            .any(|file| convex_dir.join(file).exists());
         let has_auth_config = convex_dir.join("auth.config.ts").exists()
             || convex_dir.join("auth.config.js").exists();
         let has_convex_json = root.join("convex.json").exists();
@@ -102,9 +101,7 @@ impl ProjectInfo {
                 }
                 Self::walk_dir(project_root, &path, config, files);
             } else if let Some(ext) = path.extension() {
-                if is_supported_source_file(ext)
-                    && !config.is_file_ignored(project_root, &path)
-                {
+                if is_supported_source_file(ext) && !config.is_file_ignored(project_root, &path) {
                     files.push(path);
                 }
             }

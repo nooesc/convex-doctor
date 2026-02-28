@@ -1,7 +1,7 @@
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
-use std::io::{self, Write};
 
 use clap::{Parser, ValueEnum};
 
