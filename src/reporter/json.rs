@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use serde::Serialize;
+use serde_json::json;
 
 use crate::diagnostic::{Diagnostic, Severity};
 use crate::scoring::ScoreResult;
@@ -67,6 +68,24 @@ impl Reporter for JsonReporter {
             },
             diagnostics,
         };
-        serde_json::to_string_pretty(&output).unwrap_or_else(|_| "{}".to_string())
+        serde_json::to_string_pretty(&output).unwrap_or_else(|err| {
+            serde_json::to_string_pretty(&json!({
+                "version": env!("CARGO_PKG_VERSION"),
+                "error": "serialization_failed",
+                "message": err.to_string(),
+                "score": {
+                    "value": score.value,
+                    "label": score.label,
+                },
+                "summary": {
+                    "errors": errors,
+                    "warnings": warnings,
+                    "infos": infos,
+                    "files_scanned": files_scanned,
+                },
+                "diagnostics": [],
+            }))
+            .unwrap_or_else(|_| "{}".to_string())
+        })
     }
 }

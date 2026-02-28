@@ -119,34 +119,42 @@ impl Rule for SequentialRunCalls {
         Category::Performance
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        let run_calls: Vec<_> = analysis
-            .ctx_calls
-            .iter()
-            .filter(|c| {
-                (c.chain.starts_with("ctx.runQuery") || c.chain.starts_with("ctx.runMutation"))
-                    && c.enclosing_function_kind
-                        .as_ref()
-                        .is_some_and(|k| k.is_action())
-            })
-            .collect();
+        use std::collections::HashMap;
 
-        if run_calls.len() >= 3 {
-            vec![Diagnostic {
-                rule: self.id().to_string(),
-                severity: Severity::Warning,
-                category: self.category(),
-                message: format!(
-                    "{} sequential ctx.run* calls in action — consider batching",
-                    run_calls.len()
-                ),
-                help: "Multiple sequential ctx.runQuery/ctx.runMutation calls each start a separate transaction. Consider combining related reads/writes into a single mutation.".to_string(),
-                file: analysis.file_path.clone(),
-                line: run_calls[0].line,
-                column: run_calls[0].col,
-            }]
-        } else {
-            vec![]
+        let mut by_function: HashMap<String, Vec<&crate::rules::CtxCall>> = HashMap::new();
+        for call in analysis.ctx_calls.iter().filter(|c| {
+            (c.chain.starts_with("ctx.runQuery") || c.chain.starts_with("ctx.runMutation"))
+                && c.enclosing_function_kind.as_ref().is_some_and(|k| k.is_action())
+        }) {
+            let key = call
+                .enclosing_function_id
+                .clone()
+                .unwrap_or_else(|| format!("__anonymous__@{}:{}", call.line, call.col));
+            by_function.entry(key).or_default().push(call);
         }
+
+        by_function
+            .into_iter()
+            .flat_map(|(function_name, calls)| {
+                if calls.len() >= 3 {
+                    vec![Diagnostic {
+                        rule: self.id().to_string(),
+                        severity: Severity::Warning,
+                        category: self.category(),
+                        message: format!(
+                            "Action `{}` has {} sequential ctx.run* calls — consider batching",
+                            function_name, calls.len()
+                        ),
+                        help: "Multiple sequential ctx.runQuery/ctx.runMutation calls each start a separate transaction. Consider combining related reads/writes into a single mutation.".to_string(),
+                        file: analysis.file_path.clone(),
+                        line: calls[0].line,
+                        column: calls[0].col,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            })
+            .collect()
     }
 }
 

@@ -218,6 +218,12 @@ impl Config {
         if !normalized.ends_with('/') && normalized.contains('/') && !has_glob_meta {
             push(format!("{normalized}/**"));
         }
+        if !normalized.ends_with('/')
+            && !normalized.contains('/')
+            && !has_glob_meta
+        {
+            push(format!("**/{normalized}/**"));
+        }
 
         if !normalized.contains('/') {
             push(format!("**/{normalized}"));

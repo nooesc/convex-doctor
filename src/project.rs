@@ -21,7 +21,9 @@ impl ProjectInfo {
         }
 
         let has_schema =
-            convex_dir.join("schema.ts").exists() || convex_dir.join("schema.js").exists();
+            SCHEMA_FILENAMES
+                .iter()
+                .any(|file| convex_dir.join(file).exists());
         let has_auth_config = convex_dir.join("auth.config.ts").exists()
             || convex_dir.join("auth.config.js").exists();
         let has_convex_json = root.join("convex.json").exists();
@@ -100,7 +102,7 @@ impl ProjectInfo {
                 }
                 Self::walk_dir(project_root, &path, config, files);
             } else if let Some(ext) = path.extension() {
-                if matches!(ext.to_str(), Some("ts" | "tsx" | "js" | "jsx"))
+                if is_supported_source_file(ext)
                     && !config.is_file_ignored(project_root, &path)
                 {
                     files.push(path);
@@ -109,3 +111,19 @@ impl ProjectInfo {
         }
     }
 }
+
+fn is_supported_source_file(ext: &std::ffi::OsStr) -> bool {
+    matches!(
+        ext.to_str(),
+        Some("ts" | "tsx" | "js" | "jsx" | "mts" | "cts" | "mjs" | "cjs")
+    )
+}
+
+const SCHEMA_FILENAMES: &[&str] = &[
+    "schema.ts",
+    "schema.js",
+    "schema.mts",
+    "schema.cts",
+    "schema.mjs",
+    "schema.cjs",
+];

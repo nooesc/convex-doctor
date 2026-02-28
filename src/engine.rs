@@ -28,16 +28,17 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
     let files = if let Some(base) = diff_base {
         match get_changed_files(path, base) {
             Ok(changed_files) => {
-                let changed: HashSet<_> = changed_files
+                let changed: HashSet<String> = changed_files
                     .into_iter()
-                    .map(|p| p.canonicalize().unwrap_or(p))
+                    .flat_map(|p| normalize_file_paths(&p, path))
                     .collect();
 
                 files
                     .into_iter()
                     .filter(|f| {
-                        let canon = f.canonicalize().unwrap_or_else(|_| f.clone());
-                        changed.contains(&canon)
+                        normalize_file_paths(f, path)
+                            .into_iter()
+                            .any(|candidate| changed.contains(&candidate))
                     })
                     .collect()
             }
@@ -137,9 +138,11 @@ pub fn run(path: &Path, _verbose: bool, diff_base: Option<&str>) -> Result<Engin
     let score = compute_score(&all_diagnostics);
 
     let project_name = path
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.file_name().map(|n| n.to_string_lossy().to_string()))
+        .or_else(|| path.file_name().map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| ".".to_string());
 
     Ok(EngineResult {
         diagnostics: all_diagnostics,
@@ -175,6 +178,36 @@ fn check_gitignore_contains(root: &Path, pattern: &str) -> bool {
     } else {
         false
     }
+}
+
+fn normalize_file_paths(path: &Path, project_root: &Path) -> HashSet<String> {
+    let mut paths = HashSet::new();
+    let normalized = |path: &Path| path.to_string_lossy().replace('\\', "/");
+
+    let mut add_relative = |candidate: &Path, paths: &mut HashSet<String>| {
+        if let Ok(relative) = candidate.strip_prefix(project_root) {
+            let relative = normalized(&relative);
+            if !relative.is_empty() {
+                paths.insert(relative.clone());
+                paths.insert(format!("./{relative}"));
+            }
+        }
+    };
+
+    let canonical = path.canonicalize().ok();
+
+    paths.insert(normalized(path));
+    if let Some(ref canonical) = canonical {
+        paths.insert(normalized(canonical));
+    }
+
+    // Include project-root-relative forms for matching against git output.
+    add_relative(path, &mut paths);
+    if let Some(canonical) = canonical {
+        add_relative(&canonical, &mut paths);
+    }
+
+    paths
 }
 
 pub fn get_changed_files(root: &Path, base: &str) -> Result<Vec<PathBuf>, String> {

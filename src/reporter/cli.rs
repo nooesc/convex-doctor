@@ -12,7 +12,7 @@ pub struct CliReporter;
 
 impl CliReporter {
     fn face_art(score: u32) -> [&'static str; 5] {
-        match score {
+        match score.min(100) {
             85..=100 => [
                 "╭─────────╮",
                 "│  ^   ^  │",
@@ -45,7 +45,8 @@ impl CliReporter {
     }
 
     fn progress_bar(score: u32, width: usize) -> String {
-        let filled = (score as usize * width) / 100;
+        let score = score.min(100) as usize;
+        let filled = (score * width) / 100;
         let empty = width - filled;
         let bar = format!("{}{}", "█".repeat(filled), "░".repeat(empty));
         match score {
@@ -95,13 +96,14 @@ impl Reporter for CliReporter {
         ));
 
         // Face + Score side by side
+        let normalized_score = score.value.min(100);
         let face = Self::face_art(score.value);
-        let score_colored = match score.value {
-            85..=100 => format!("{}", score.value).green().bold().to_string(),
-            70..=84 => format!("{}", score.value).yellow().bold().to_string(),
-            _ => format!("{}", score.value).red().bold().to_string(),
+        let score_colored = match normalized_score {
+            85..=100 => format!("{}", normalized_score).green().bold().to_string(),
+            70..=84 => format!("{}", normalized_score).yellow().bold().to_string(),
+            _ => format!("{}", normalized_score).red().bold().to_string(),
         };
-        let label_colored = match score.value {
+        let label_colored = match normalized_score {
             85..=100 => score.label.green().to_string(),
             70..=84 => score.label.yellow().to_string(),
             _ => score.label.red().to_string(),

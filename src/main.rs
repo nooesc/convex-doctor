@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::process;
 use std::time::Instant;
+use std::io::{self, Write};
 
 use clap::{Parser, ValueEnum};
 
@@ -56,7 +57,12 @@ fn main() {
     let elapsed = start.elapsed();
 
     if cli.score {
-        print!("{}", convex_doctor::reporter::score_only(&result.score));
+        let mut stdout = io::stdout();
+        let output = convex_doctor::reporter::score_only(&result.score);
+        stdout
+            .write_all(output.as_bytes())
+            .expect("failed to write score output");
+        stdout.flush().expect("failed to flush score output");
     } else {
         let output = match cli.format {
             OutputFormat::Json => {
@@ -82,7 +88,11 @@ fn main() {
                 )
             }
         };
-        print!("{output}");
+        let mut stdout = io::stdout();
+        stdout
+            .write_all(output.as_bytes())
+            .expect("failed to write report output");
+        stdout.flush().expect("failed to flush report output");
     }
 
     if result.fail_below > 0 && result.score.value < result.fail_below {

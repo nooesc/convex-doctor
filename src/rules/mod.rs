@@ -151,6 +151,7 @@ pub struct CtxCall {
     pub is_returned: bool,
     pub assigned_to: Option<String>,
     pub enclosing_function_kind: Option<FunctionKind>,
+    pub enclosing_function_id: Option<String>,
     pub enclosing_function_name: Option<String>,
     pub enclosing_function_has_internal_secret: bool,
     pub first_arg_chain: Option<String>,

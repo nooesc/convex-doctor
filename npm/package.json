@@ -1,0 +1,35 @@
+{
+  "name": "convex-doctor",
+  "version": "0.2.0",
+  "description": "Diagnose your Convex backend for anti-patterns, security issues, and performance problems",
+  "bin": {
+    "convex-doctor": "bin.js"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "update-convex-guidance": "../scripts/update-convex-guidance.sh"
+  },
+  "keywords": [
+    "convex",
+    "linter",
+    "static-analysis",
+    "typescript",
+    "diagnostics"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nooesc/convex-doctor.git"
+  },
+  "homepage": "https://github.com/nooesc/convex-doctor",
+  "bugs": {
+    "url": "https://github.com/nooesc/convex-doctor/issues"
+  },
+  "license": "MIT",
+  "files": [
+    "bin.js",
+    "install.js"
+  ],
+  "engines": {
+    "node": ">=16"
+  }
+}

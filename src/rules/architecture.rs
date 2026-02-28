@@ -297,43 +297,56 @@ impl Rule for DeepFunctionChain {
         Category::Architecture
     }
     fn check(&self, analysis: &FileAnalysis) -> Vec<Diagnostic> {
-        let run_calls_in_actions: usize = analysis
-            .ctx_calls
-            .iter()
-            .filter(|c| {
-                let is_action = c
-                    .enclosing_function_kind
-                    .as_ref()
-                    .is_some_and(|k| k.is_action());
+        use std::collections::HashMap;
 
-                let is_chunked_action = c
-                    .enclosing_function_name
-                    .as_deref()
-                    .is_some_and(is_chunked_processing_action);
+        let mut by_function: HashMap<String, Vec<&crate::rules::CtxCall>> = HashMap::new();
 
-                is_action
-                    && !c.enclosing_function_has_internal_secret
-                    && !is_chunked_action
-                    && (c.chain.starts_with("ctx.runQuery")
-                        || c.chain.starts_with("ctx.runMutation"))
-            })
-            .count();
-        if run_calls_in_actions >= 4 {
-            vec![Diagnostic {
-                rule: self.id().to_string(),
-                severity: Severity::Warning,
-                category: self.category(),
-                message: format!(
-                    "{} ctx.run* calls in action — deep function chain",
-                    run_calls_in_actions
-                ),
-                help: "Each `ctx.runQuery`/`ctx.runMutation` is a separate transaction. Consider batching related operations into fewer mutations.".to_string(),
-                file: analysis.file_path.clone(),
-                line: 1,
-                column: 1,
-            }]
-        } else {
-            vec![]
+        for call in analysis.ctx_calls.iter() {
+            let is_action = call
+                .enclosing_function_kind
+                .as_ref()
+                .is_some_and(|k| k.is_action());
+
+            let is_chunked_action = call
+                .enclosing_function_name
+                .as_deref()
+                .is_some_and(is_chunked_processing_action);
+
+            if is_action
+                && !call.enclosing_function_has_internal_secret
+                && !is_chunked_action
+                && (call.chain.starts_with("ctx.runQuery") || call.chain.starts_with("ctx.runMutation"))
+            {
+                let key = call
+                    .enclosing_function_id
+                    .clone()
+                    .unwrap_or_else(|| format!("__anonymous__@{}:{}", call.line, call.col));
+                by_function.entry(key).or_default().push(call);
+            }
         }
+
+        by_function
+            .into_iter()
+            .flat_map(|(function_name, calls)| {
+                if calls.len() >= 4 {
+                    vec![Diagnostic {
+                        rule: self.id().to_string(),
+                        severity: Severity::Warning,
+                        category: self.category(),
+                        message: format!(
+                            "Action `{}` has {} ctx.run* calls — deep function chain",
+                            function_name,
+                            calls.len()
+                        ),
+                        help: "Each `ctx.runQuery`/`ctx.runMutation` is a separate transaction. Consider batching related operations into fewer mutations.".to_string(),
+                        file: analysis.file_path.clone(),
+                        line: calls[0].line,
+                        column: calls[0].col,
+                    }]
+                } else {
+                    Vec::new()
+                }
+            })
+            .collect()
     }
 }

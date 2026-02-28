@@ -17,21 +17,23 @@ Tested against 18 open-source Convex applications
 | [miro-clone](https://github.com/sanidhyy/miro-clone) | 82 | 89/100 | 3 | 18 | 13 | 34 |
 | [replicate](https://github.com/trestleinc/replicate) | 201 | 88/100 | 3 | 19 | 0 | 22 |
 | [livecanvas](https://github.com/kaifcoder/livecanvas) | 192 | 86/100 | 3 | 28 | 0 | 31 |
-| [quizzex](https://github.com/AnsellMaximilian/quizzex) | 1 | 82/100 | 3 | 61 | 4 | 68 |
+| [quizzex](https://github.com/AnsellMaximilian/quizzex) | 1 | 83/100 | 3 | 58 | 4 | 65 |
 | [notion-clone](https://github.com/adityaphasu/notion-clone) | 141 | 80/100 | 9 | 32 | 28 | 69 |
 | [BloxAI](https://github.com/subhadeeproy3902/BloxAI) | 91 | 77/100 | 9 | 66 | 0 | 75 |
 | [podcastr](https://github.com/adrianhajdin/podcastr) | 782 | 77/100 | 12 | 51 | 6 | 69 |
-| [convjobs](https://github.com/mithileshchellappan/convjobs) | 2 | 76/100 | 6 | 47 | 4 | 57 |
-| [convex-saas](https://github.com/get-convex/convex-saas) | 339 | 70/100 | 7 | 39 | 26 | 72 |
+| [convjobs](https://github.com/mithileshchellappan/convjobs) | 2 | 77/100 | 6 | 45 | 4 | 55 |
+| [convex-saas](https://github.com/get-convex/convex-saas) | 339 | 76/100 | 5 | 38 | 27 | 70 |
 | [react-starter-kit](https://github.com/michaelshimeles/react-starter-kit) | 616 | 69/100 | 10 | 42 | 4 | 56 |
-| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 212 | 64/100 | 22 | 129 | 20 | 171 |
+| [ticket-marketplace](https://github.com/sonnysangha/ticket-marketplace-saas-nextjs15-convex-clerk-stripe-connect) | 212 | 64/100 | 22 | 118 | 20 | 160 |
 | [OpenChat](https://github.com/ajanraj/OpenChat) | 138 | 57/100 | 47 | 142 | 15 | 204 |
-| [travel-planner-ai](https://github.com/hardikverma22/travel-planner-ai) | 241 | 55/100 | 34 | 165 | 9 | 208 |
-| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 314 | 54/100 | 49 | 172 | 118 | 339 |
-| [opensync](https://github.com/waynesutton/opensync) | 310 | 47/100 | 70 | 256 | 58 | 384 |
-| [markdown-site](https://github.com/waynesutton/markdown-site) | 550 | 41/100 | 73 | 245 | 48 | 366 |
+| [travel-planner-ai](https://github.com/hardikverma22/travel-planner-ai) | 241 | 56/100 | 34 | 163 | 9 | 206 |
+| [youpac-ai](https://github.com/michaelshimeles/youpac-ai) | 314 | 54/100 | 49 | 174 | 118 | 341 |
+| [opensync](https://github.com/waynesutton/opensync) | 310 | 49/100 | 70 | 249 | 58 | 377 |
+| [markdown-site](https://github.com/waynesutton/markdown-site) | 550 | 42/100 | 73 | 243 | 48 | 364 |
 
-*Benchmarks run on Feb 27, 2026 against each project's `main` branch. Sorted by score.*
+*Benchmarks run on Feb 28, 2026 against each project's `main` branch. Sorted by score.*
+
+*Re-runs this table from the current CLI build with `convex-doctor --format json <repo>` for each project.*
 
 ## Installation
 
@@ -98,11 +100,13 @@ convex-doctor -v
 convex-doctor --format json
 
 # Score only (prints just the number, e.g. "87")
+# `--score` takes precedence over `--format`.
 convex-doctor --score
 
 # Diff mode: only analyze files changed vs a base branch
 convex-doctor --diff main
-# Note: diff mode only runs file-level rules on changed files.
+# Note: if git metadata is unavailable, diff mode falls back to scanning all files
+# (and prints a warning).
 
 # Scan a specific project path
 convex-doctor /path/to/my-project

@@ -1113,11 +1113,28 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                         .and_then(|expr| Self::resolve_member_chain(expr))
                 });
 
-                let (enclosing_function_name, enclosing_function_has_internal_secret) =
-                    match self.current_builder_mut() {
-                        Some(builder) => (Some(builder.name.clone()), builder.has_internal_secret),
-                        None => (None, false),
-                    };
+                let (
+                    enclosing_function_name,
+                    enclosing_function_has_internal_secret,
+                    enclosing_function_id,
+                ) = match self.current_builder_mut() {
+                    Some(builder) => {
+                        let function_id = if builder.name.is_empty() {
+                            Some(format!(
+                                "__anonymous__@{}:{}",
+                                builder.span_line, builder.span_col
+                            ))
+                        } else {
+                            Some(builder.name.clone())
+                        };
+                        (
+                            Some(builder.name.clone()),
+                            builder.has_internal_secret,
+                            function_id,
+                        )
+                    }
+                    None => (None, false, None),
+                };
 
                 let ctx_call = CtxCall {
                     chain: chain.clone(),
@@ -1127,6 +1144,7 @@ impl<'a> Visit<'a> for ConvexVisitor<'a> {
                     is_returned: self.in_return,
                     assigned_to: self.current_assignment_target.clone(),
                     enclosing_function_kind: self.current_function_kind.clone(),
+                    enclosing_function_id,
                     enclosing_function_name,
                     enclosing_function_has_internal_secret,
                     first_arg_chain,

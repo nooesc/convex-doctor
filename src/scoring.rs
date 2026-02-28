@@ -22,6 +22,7 @@ pub fn compute_score(diagnostics: &[Diagnostic]) -> ScoreResult {
             .entry(&d.rule)
             .or_insert((0.0, cap * weight));
         entry.0 += raw_per_instance * weight;
+        entry.1 = entry.1.max(cap * weight);
     }
 
     let total_deduction: f64 = rule_deductions

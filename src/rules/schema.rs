@@ -4,7 +4,16 @@ use std::path::Path;
 use crate::diagnostic::{Category, Diagnostic, Severity};
 use crate::rules::{FileAnalysis, ProjectContext, Rule};
 
-/// Project-level rule: warn when no schema.ts file exists in convex/ directory.
+const SCHEMA_FILENAMES: &[&str] = &[
+    "schema.ts",
+    "schema.js",
+    "schema.mts",
+    "schema.cts",
+    "schema.mjs",
+    "schema.cjs",
+];
+
+/// Project-level rule: warn when no schema file exists in convex/ directory.
 pub struct MissingSchema;
 impl Rule for MissingSchema {
     fn id(&self) -> &'static str {
@@ -22,8 +31,8 @@ impl Rule for MissingSchema {
                 rule: self.id().to_string(),
                 severity: Severity::Warning,
                 category: self.category(),
-                message: "No schema.ts file found in convex/ directory".to_string(),
-                help: "Create convex/schema.ts to define your database schema with type safety."
+                message: "No schema file found in convex/ directory".to_string(),
+                help: "Create a convex/schema* file to define your database schema with type safety."
                     .to_string(),
                 file: "convex/".to_string(),
                 line: 0,
@@ -239,10 +248,7 @@ impl Rule for OptionalFieldNoDefaultHandling {
             .file_name()
             .and_then(|name| name.to_str())
             .is_some_and(|name| {
-                matches!(
-                    name,
-                    "schema.ts" | "schema.js" | "schema.mts" | "schema.mjs"
-                )
+                SCHEMA_FILENAMES.contains(&name)
             });
 
         if is_schema_file && analysis.optional_schema_fields.len() >= 5 {
@@ -268,8 +274,7 @@ impl Rule for OptionalFieldNoDefaultHandling {
 /// Project-level rule: warning when query filter fields have no matching index.
 ///
 /// Cross-references `filter_field_names` from each file against
-/// `ctx.all_index_definitions`.  For v1 this is a simplified check that looks
-/// at the first field of each index definition.
+/// `ctx.all_index_definitions`.
 // TODO: In a future version, access per-file FileAnalysis from check_project
 // to provide file-level diagnostics with precise locations.  The current Rule
 // trait only passes ProjectContext to check_project, so we aggregate here.
@@ -304,11 +309,13 @@ impl Rule for MissingIndexForQuery {
             }];
         }
 
-        // Collect all indexed first-fields
+        // Collect all indexed fields in scope of the rule (any position in the index).
+        // This avoids false positives for valid compound indexes where the filter
+        // field appears beyond the first position.
         let indexed_fields: HashSet<&str> = ctx
             .all_index_definitions
             .iter()
-            .filter_map(|idx| idx.fields.first().map(|f| f.as_str()))
+            .flat_map(|idx| idx.fields.iter().map(|f| f.as_str()))
             .collect();
 
         // Warn for filter fields not covered by any index
@@ -320,7 +327,7 @@ impl Rule for MissingIndexForQuery {
                 severity: Severity::Warning,
                 category: self.category(),
                 message: format!(
-                    "Query filters on field `{}` but no index starts with that field",
+                    "Query filters on field `{}` but no index covers that field",
                     ff.field_name
                 ),
                 help: "Add an index starting with this field to avoid full table scans."
