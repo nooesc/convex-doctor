@@ -184,9 +184,9 @@ fn normalize_file_paths(path: &Path, project_root: &Path) -> HashSet<String> {
     let mut paths = HashSet::new();
     let normalized = |path: &Path| path.to_string_lossy().replace('\\', "/");
 
-    let mut add_relative = |candidate: &Path, paths: &mut HashSet<String>| {
+    let add_relative = |candidate: &Path, paths: &mut HashSet<String>| {
         if let Ok(relative) = candidate.strip_prefix(project_root) {
-            let relative = normalized(&relative);
+            let relative = normalized(relative);
             if !relative.is_empty() {
                 paths.insert(relative.clone());
                 paths.insert(format!("./{relative}"));
