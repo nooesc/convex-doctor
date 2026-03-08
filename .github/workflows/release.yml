@@ -74,7 +74,7 @@ jobs:
     name: Publish npm package
     needs: build
     runs-on: ubuntu-latest
-    if: ${{ github.repository == 'nooesc/convex-doctor' && secrets.NPM_TOKEN != '' }}
+    if: ${{ github.repository == 'nooesc/convex-doctor' }}
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -83,7 +83,12 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org
       - name: Publish npm package
-        run: npm publish --access public
+        run: |
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "NPM_TOKEN is not configured; skipping npm publish."
+            exit 0
+          fi
+          npm publish --access public
         working-directory: npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
