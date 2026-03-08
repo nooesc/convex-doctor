@@ -69,3 +69,21 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           files: ${{ matrix.artifact }}
+
+  publish_npm:
+    name: Publish npm package
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ github.repository == 'nooesc/convex-doctor' && secrets.NPM_TOKEN != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Publish npm package
+        run: npm publish --access public
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
