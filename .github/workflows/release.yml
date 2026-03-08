@@ -82,6 +82,9 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+      - name: Include root README in npm package publish
+        working-directory: npm
+        run: cp ../README.md README.md
       - name: Publish npm package
         run: |
           if [ -z "${NODE_AUTH_TOKEN}" ]; then
